@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 Dataset/
 dataset/
+runs/
+*.pt
+!best_yolov8n.pt
+!best_yolov8s.pt
