@@ -1,0 +1,2 @@
+best_yolov8n.pt filter=lfs diff=lfs merge=lfs -text
+best_yolov8s.pt filter=lfs diff=lfs merge=lfs -text
