@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Raqeeb Employee Dashboard</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #0f1115; color: #e8e8ea; }
+  header { padding: 16px 24px; background: #171a21; border-bottom: 1px solid #2a2e37; }
+  h1 { font-size: 18px; margin: 0; }
+  .layout { display: flex; height: calc(100vh - 57px); }
+  .list { width: 320px; overflow-y: auto; border-right: 1px solid #2a2e37; }
+  .item { padding: 12px 16px; border-bottom: 1px solid #23262e; cursor: pointer; }
+  .item:hover { background: #1b1e26; }
+  .item .cls { font-weight: 600; }
+  .item .conf { color: #9aa0ab; font-size: 12px; }
+  .detail { flex: 1; padding: 24px; overflow-y: auto; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #2a2e37; }
+  .badge.confirmed { background: #234; }
+  .badge.false_positive { background: #422; }
+  img.frame { max-width: 360px; border-radius: 8px; margin: 12px 0; display: block; }
+  label { display: block; margin: 10px 0 4px; font-size: 13px; color: #b7bcc6; }
+  input, textarea { width: 100%; max-width: 420px; padding: 8px; border-radius: 6px; border: 1px solid #333944; background: #12141a; color: #e8e8ea; }
+  button { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; margin-right: 8px; margin-top: 12px; }
+  .confirm { background: #2f6f4f; color: white; }
+  .reject { background: #7a3b3b; color: white; }
+  .mic { background: #2f4f6f; color: white; }
+  #log { margin-top: 16px; font-size: 13px; color: #b7bcc6; max-height: 240px; overflow-y: auto; }
+  pre { background: #12141a; padding: 12px; border-radius: 8px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Raqeeb -- Employee Verification Dashboard</h1>
+  <div id="shift" style="margin-top:8px;"></div>
+</header>
+<div class="layout">
+  <div class="list" id="list">
+    <div style="padding:12px 16px;">
+      <label>Frame image</label><input type="file" id="frame_input" accept="image/*" />
+      <button onclick="runDetection()">Run detection</button>
+    </div>
+  </div>
+  <div class="detail" id="detail">Select a detection from the list.</div>
+</div>
+
+<script>
+const API = "";
+let currentId = null;
+let ws = null;
+let audioCtx = null;
+
+function getEmployee() {
+  const raw = localStorage.getItem("raqeeb_employee");
+  return raw ? JSON.parse(raw) : null;
+}
+
+function renderShift() {
+  const emp = getEmployee();
+  const el = document.getElementById("shift");
+  if (emp) {
+    el.innerHTML = `On duty: <b>${emp.name}</b> (${emp.id}) <button onclick="endShift()">End shift</button>`;
+  } else {
+    el.innerHTML = `
+      <label>Employee name</label><input id="shift_name" style="width:160px;display:inline-block" />
+      <label>Employee ID</label><input id="shift_id" style="width:120px;display:inline-block" />
+      <button onclick="startShift()">Start shift</button>
+    `;
+  }
+}
+
+function startShift() {
+  const name = document.getElementById("shift_name").value.trim();
+  const id = document.getElementById("shift_id").value.trim();
+  if (!name || !id) return alert("Enter your name and employee ID first.");
+  localStorage.setItem("raqeeb_employee", JSON.stringify({ name, id }));
+  renderShift();
+}
+
+function endShift() {
+  localStorage.removeItem("raqeeb_employee");
+  renderShift();
+}
+
+async function runDetection() {
+  const emp = getEmployee();
+  if (!emp) return alert("Start your shift first (enter name + employee ID above).");
+  const input = document.getElementById("frame_input");
+  if (!input.files.length) return alert("Choose an image first.");
+
+  const body = new FormData();
+  body.append("image", input.files[0]);
+  body.append("employee_name", emp.name);
+  body.append("employee_id", emp.id);
+
+  const res = await fetch(`${API}/api/detect`, { method: "POST", body });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return alert(err.detail || "Detection failed.");
+  }
+  const data = await res.json();
+  await refreshList();
+  await openIncident(data.incident_id);
+}
+
+async function refreshList() {
+  const res = await fetch(`${API}/api/incidents`);
+  const incidents = await res.json();
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  for (const inc of incidents) {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `<div class="cls">${inc.detection_class}</div>
+      <div class="conf">${(inc.detection_confidence*100).toFixed(1)}% -- ${inc.status}</div>`;
+    div.onclick = () => openIncident(inc.id);
+    list.appendChild(div);
+  }
+}
+
+async function openIncident(id) {
+  currentId = id;
+  const res = await fetch(`${API}/api/incidents/${id}`);
+  const inc = await res.json();
+  render(inc);
+}
+
+function render(inc) {
+  const el = document.getElementById("detail");
+  const needsVerification = inc.status === "pending_verification";
+  el.innerHTML = `
+    <h2>${inc.id}</h2>
+    <span class="badge">${inc.status}</span>
+    ${inc.verification_status ? `<span class="badge ${inc.verification_status}">${inc.verification_status}</span>` : ""}
+    <img class="frame" src="/uploads/${inc.id}.jpg" onerror="this.style.display='none'" />
+    <p><b>Detected:</b> ${inc.detection_class} (${(inc.detection_confidence*100).toFixed(1)}% confidence)</p>
+    <p><b>Location:</b> ${inc.incident_data?.location || "--"}</p>
+    <p><b>Employee on duty:</b> ${inc.employee_name || "--"} (${inc.employee_id || "--"})</p>
+    ${needsVerification ? verificationForm() : ""}
+    ${inc.status !== "pending_verification" && inc.status !== "false_positive" ? `<button class="mic" onclick="startVoice('${inc.id}')">Start voice collection</button>` : ""}
+    <div id="log"></div>
+    ${inc.report ? `<h3>Report</h3><p>${inc.report_summary || ""}</p><pre>${JSON.stringify(inc.report, null, 2)}</pre>` : ""}
+    ${inc.authority_name ? `<p><b>Authority:</b> ${inc.authority_name} (${inc.authority_phone})</p>` : ""}
+    ${inc.authority_response ? `<h3>Authority response</h3><pre>${JSON.stringify(inc.authority_response, null, 2)}</pre>` : ""}
+  `;
+}
+
+function verificationForm() {
+  return `
+    <label>Notes (optional)</label><textarea id="emp_notes"></textarea>
+    <div>
+      <button class="confirm" onclick="verify(true)">Confirm detection</button>
+      <button class="reject" onclick="verify(false)">Mark false positive</button>
+    </div>
+  `;
+}
+
+async function verify(confirmed) {
+  const notes = document.getElementById("emp_notes").value;
+  const res = await fetch(`${API}/api/incidents/${currentId}/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirmed, notes }),
+  });
+  const data = await res.json();
+  await openIncident(currentId);
+  await refreshList();
+  if (confirmed) startVoice(currentId);
+}
+
+function log(msg) {
+  const box = document.getElementById("log");
+  if (box) box.innerHTML += `<div>${msg}</div>`;
+}
+
+async function startVoice(incidentId) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const source = audioCtx.createMediaStreamSource(stream);
+  const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+  source.connect(processor);
+  processor.connect(audioCtx.destination);
+
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws/employee/${incidentId}`);
+  ws.binaryType = "arraybuffer";
+
+  processor.onaudioprocess = (e) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const input = e.inputBuffer.getChannelData(0);
+    const pcm16 = downsampleTo16kPCM16(input, audioCtx.sampleRate);
+    ws.send(pcm16);
+  };
+
+  ws.onmessage = (event) => {
+    if (typeof event.data === "string") {
+      const msg = JSON.parse(event.data);
+      if (msg.type === "transcript") log(`Gemini: ${msg.text}`);
+      else if (msg.type === "field_recorded") log(`Recorded ${msg.field} = ${msg.value}`);
+      else if (msg.type === "false_positive_flagged") log("Employee flagged false positive.");
+      else if (msg.type === "collection_complete") { log("Information collection complete."); stopVoice(); openIncident(incidentId); }
+      else if (msg.type === "workflow_ended") { log(`Workflow ended: ${msg.status}`); stopVoice(); openIncident(incidentId); }
+      else log(JSON.stringify(msg));
+    } else {
+      playPCM16(new Int16Array(event.data));
+    }
+  };
+  ws.onclose = () => log("Voice session closed.");
+}
+
+function stopVoice() {
+  if (ws) ws.close();
+}
+
+function downsampleTo16kPCM16(float32, inRate) {
+  const outRate = 16000;
+  const ratio = inRate / outRate;
+  const outLength = Math.floor(float32.length / ratio);
+  const result = new Int16Array(outLength);
+  for (let i = 0; i < outLength; i++) {
+    const s = Math.max(-1, Math.min(1, float32[Math.floor(i * ratio)]));
+    result[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+  }
+  return result.buffer;
+}
+
+function playPCM16(int16) {
+  const float32 = new Float32Array(int16.length);
+  for (let i = 0; i < int16.length; i++) float32[i] = int16[i] / 0x8000;
+  const buffer = audioCtx.createBuffer(1, float32.length, 24000);
+  buffer.copyToChannel(float32, 0);
+  const src = audioCtx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(audioCtx.destination);
+  src.start();
+}
+
+renderShift();
+refreshList();
+setInterval(refreshList, 5000);
+</script>
+</body>
+</html>

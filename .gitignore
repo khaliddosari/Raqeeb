@@ -8,3 +8,9 @@ runs/
 *.pt
 !best_yolov8n.pt
 !best_yolov8s.pt
+
+# --- Voice agent app ---
+.venv/
+uploads/
+*.db
+.pytest_cache/

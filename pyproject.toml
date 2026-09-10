@@ -1,0 +1,38 @@
+[project]
+name = "raqeeb"
+version = "0.1.0"
+description = "Weapon detection on X-ray baggage scans, wired into a voice-driven incident-response agent."
+requires-python = ">=3.12"
+dependencies = [
+    "roboflow",
+    "python-dotenv",
+    "ultralytics",
+    "opencv-python",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "pyyaml",
+    "pillow",
+    "modal",
+    # --- Voice agent app (agent/) ---
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+    "sqlalchemy",
+    "httpx",
+    "pydantic-settings",
+    "langgraph",
+    "google-genai",
+    "twilio",
+    "audioop-lts; python_version>='3.13'",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
