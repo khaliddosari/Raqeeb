@@ -42,3 +42,24 @@ async def debug_start(incident_id: str, payload: dict[str, Any]):
 async def debug_resume(incident_id: str, payload: dict[str, Any]):
     result = await resume_incident(incident_id, payload)
     return {"interrupt": result["interrupt"], "state": result["state"]}
+
+
+@router.post("/test-stream-webhook")
+async def test_stream_webhook():
+    """Pure connectivity probe: one-way <Start><Stream> (doesn't take over the call)
+    followed by <Say>/<Pause> so the call stays up regardless of whether the stream
+    connects. Used to test whether Twilio's Media Streams infra can reach us at all,
+    independent of <Connect><Stream>'s stricter bidirectional requirements."""
+    ws_url = f"{settings.public_base_url.replace('http', 'ws', 1)}/ws/twilio-media/diagnostic"
+    twiml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        "<Response>"
+        f'<Start><Stream url="{ws_url}" /></Start>'
+        "<Say>Testing one way stream connection.</Say>"
+        '<Pause length="5"/>'
+        "<Say>Test complete, goodbye.</Say>"
+        "</Response>"
+    )
+    from fastapi import Response
+
+    return Response(content=twiml, media_type="application/xml")
