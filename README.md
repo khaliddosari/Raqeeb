@@ -184,9 +184,10 @@ Only needed to re-run the notebooks, re-download the dataset, or retrain.
    ```
    Get a key at [roboflow.com](https://roboflow.com) with access to the `sixray-gzyn7`
    project, or ask a teammate to add you to the workspace.
-3. Install dependencies:
+3. Install dependencies with [uv](https://docs.astral.sh/uv/) (installs `uv sync` from
+   `uv.lock`, so everyone gets the exact same resolved versions):
    ```bash
-   pip install -r requirements.txt
+   uv sync
    ```
 
 ## Notebooks and scripts
@@ -239,3 +240,54 @@ modal volume get sixray-data runs/sixray_yolov8s_obb/weights/best.pt ./best_yolo
 | mAP50-95 | 0.002 | 0.765 | 0.805 |
 
 See `Model_Training.ipynb` for the full per-class breakdown and methodology.
+
+## Voice agent app (`agent/`)
+
+The trained model above is wired into a full incident-response workflow: YOLO detects,
+an employee physically verifies, and a Google Gemini voice agent takes it from there --
+collecting incident details by voice, generating a structured report, routing it to the
+right authority, and placing/handling an outbound Twilio call to request dispatch.
+Orchestration and state live in a LangGraph graph (`agent/graph/workflow.py`); YOLO,
+Gemini, and Twilio are each confined to a single responsibility (detection, reasoning,
+telephony) and only ever exposed through provider interfaces
+(`agent/providers/base.py`), so swapping either the LLM or telephony backend never
+touches graph/route code.
+
+```
+YOLO Detection -> Display -> Employee Verification -> (false? -> END)
+  -> Gemini Voice Agent collects & validates incident info
+  -> Generate Report -> Determine Authority -> Send Report
+  -> Twilio Outbound Call -> Gemini <-> Authority Conversation -> Update Incident -> END
+```
+
+### Run it
+
+```bash
+uv sync
+cp .env.example .env   # fill in GEMINI_API_KEY / TWILIO_* for real mode
+uv run uvicorn agent.main:app --reload
+```
+
+Open `http://localhost:8000/dashboard/` for the employee dashboard (upload a frame,
+verify the detection, then talk to the voice agent through the browser mic).
+
+Set `LLM_PROVIDER=mock` and `TELEPHONY_PROVIDER=mock` (the `.env.example` default) to
+run the entire workflow -- including the "Gemini" and "Twilio" steps -- with no API
+keys at all, useful for development and CI. Switch both to `gemini`/`twilio` once you
+have real credentials; nothing else changes.
+
+`config/authority_mapping.yaml` is the external CLASS -> AUTHORITY -> PHONE ->
+REPORT_ENDPOINT table the graph's `determine_authority` node reads; edit it (or the
+`AUTHORITY_*` env vars it references) to change routing without touching code.
+
+### Tests
+
+```bash
+uv run pytest tests/
+```
+
+`tests/test_workflow_mock.py` drives the whole LangGraph workflow end-to-end with the
+mock providers, asserting the detection fields are never mutated downstream, the
+false-positive branch only triggers on the employee's own decision (via the dashboard
+button or an explicit voice flag), missing-field validation loops the collection step,
+and the graph reaches `closed` with a complete report and authority response.
