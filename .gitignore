@@ -14,3 +14,12 @@ runs/
 uploads/
 *.db
 .pytest_cache/
+
+# tracking outputs
+*_tracked.mp4
+*_tracks.csv
+*_tracks.json
+
+# synthetic belt clips
+belt_*.mp4
+belt_*_gt.json

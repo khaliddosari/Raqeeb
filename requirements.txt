@@ -1,0 +1,13 @@
+roboflow
+python-dotenv
+ultralytics
+opencv-python
+numpy
+pandas
+matplotlib
+seaborn
+pyyaml
+Pillow
+modal
+lap
+scipy
