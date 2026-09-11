@@ -34,7 +34,7 @@ class GeminiVoiceSession(VoiceSession):
         self._session = None
         self._pump_task: asyncio.Task | None = None
 
-    async def start(self, system_instruction: str, tools: list[ToolSpec]) -> None:
+    async def start(self, system_instruction: str, tools: list[ToolSpec], language_code: str | None = None) -> None:
         from google.genai import types
 
         function_declarations = [
@@ -44,6 +44,7 @@ class GeminiVoiceSession(VoiceSession):
             response_modalities=["AUDIO"],
             system_instruction=types.Content(parts=[types.Part(text=system_instruction)]),
             tools=[{"function_declarations": function_declarations}] if function_declarations else None,
+            speech_config=types.SpeechConfig(language_code=language_code) if language_code else None,
         )
         self._session_cm = _client().aio.live.connect(model=settings.gemini_live_model, config=config)
         self._session = await self._session_cm.__aenter__()
@@ -52,7 +53,11 @@ class GeminiVoiceSession(VoiceSession):
     async def _pump(self) -> None:
         assert self._session is not None
         try:
+            print("[DEBUG gemini] live session connected, waiting for responses")
             async for response in self._session.receive():
+                go_away = getattr(response, "go_away", None)
+                if go_away:
+                    print(f"[DEBUG gemini] go_away received, time_left={getattr(go_away, 'time_left', None)}")
                 if getattr(response, "data", None):
                     await self._queue.put(VoiceEvent(type="audio", audio=response.data))
                 text = getattr(response, "text", None)
@@ -73,7 +78,10 @@ class GeminiVoiceSession(VoiceSession):
                     response.server_content, "turn_complete", False
                 ):
                     await self._queue.put(VoiceEvent(type="turn_complete"))
+            print("[DEBUG gemini] receive() generator ended normally")
+            await self._queue.put(VoiceEvent(type="closed", text="receive() ended"))
         except Exception as exc:  # connection dropped/closed mid-stream
+            print(f"[DEBUG gemini] _pump raised: {exc!r}")
             await self._queue.put(VoiceEvent(type="closed", text=str(exc)))
 
     async def send_audio_chunk(self, pcm16_bytes: bytes) -> None:
@@ -116,9 +124,20 @@ class GeminiLLMProvider(LLMProvider):
     async def generate_report_narrative(self, report_data: dict[str, Any]) -> str:
         client = _client()
         prompt = (
-            "Write a concise, professional 3-5 sentence incident summary for an airport "
-            "security report from this JSON. Do not invent facts not present in the data, "
-            "and do not alter the detected item or confidence value.\n\n"
+            "Write a detailed, professional airport security incident report from this JSON, "
+            "IN ARABIC (Modern Standard Arabic, formal report register). This is the full written "
+            "report record -- be thorough, not brief. Structure it as several short paragraphs "
+            "under clear headers (use Arabic headers, e.g. as bold-style lines): "
+            "(1) a summary of what happened; "
+            "(2) detection and verification details (how it was found, the detector's confidence, "
+            "and how the employee physically confirmed it); "
+            "(3) suspect and reporting details (who was involved, who reported it, any notes); "
+            "(4) a risk assessment explaining WHY this item/situation warrants its severity level "
+            "(reason about it, don't just state the level); "
+            "(5) recommended next steps for the responding team, beyond the one-line action. "
+            "Do not invent facts not present in the data, and do not alter the detected item or "
+            "confidence value -- where a section would need information that isn't in the data, "
+            "say so plainly rather than making it up.\n\n"
             f"{json.dumps(report_data, default=str)}"
         )
         response = await asyncio.to_thread(
@@ -130,7 +149,9 @@ class GeminiLLMProvider(LLMProvider):
         client = _client()
         prompt = (
             "Given this airport security incident JSON, respond with ONLY a JSON object "
-            '{"severity": "low|medium|high|critical", "recommended_action": "<one sentence>"}. '
+            '{"severity": "low|medium|high|critical", "recommended_action": "<one sentence, in Arabic>"}. '
+            "The severity value itself must stay one of those exact English words (it drives "
+            "internal logic/styling) -- only recommended_action should be in Arabic. "
             "Base the severity on the detected item and notes only -- never change or "
             "second-guess the verification_status field.\n\n"
             f"{json.dumps(report_data, default=str)}"

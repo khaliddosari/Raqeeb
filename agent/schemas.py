@@ -28,6 +28,16 @@ class CollectedInfoInput(BaseModel):
     fields: dict[str, Any] = {}
 
 
+class ManualSuspectInfoInput(BaseModel):
+    """A typed-form alternative to the voice-collection step, for demos/presentations
+    where talking to the mic isn't practical. suspect_phone_number and notes aren't
+    asked for -- the report still requires them, so a placeholder fills the gap."""
+
+    suspect_name: str
+    suspect_id_number: str
+    notes: str | None = None
+
+
 class AuthorityCallResult(BaseModel):
     dispatch_confirmed: bool
     authority_statement: str

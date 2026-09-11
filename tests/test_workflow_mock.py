@@ -47,14 +47,11 @@ async def test_confirmed_detection_runs_to_closed():
     assert already_collected["employee_name"] == "Sara"
 
     # Deliberately omit one required field first, to exercise the validate -> loop-back edge.
-    partial_fields = {
-        "suspect_name": "John Doe",
-        "suspect_id_number": "X123",
-    }
+    partial_fields = {"suspect_name": "John Doe"}
     result = await resume_incident(incident_id, {"flagged_false_positive": False, "fields": partial_fields})
     assert result["interrupt"]["stage"] == "collect_information"  # looped back, still missing fields
 
-    remaining_fields = {"suspect_phone_number": "+15550001111", "employee_notes": "found in carry-on"}
+    remaining_fields = {"suspect_id_number": "X123"}
     result = await resume_incident(incident_id, {"flagged_false_positive": False, "fields": remaining_fields})
     assert result["interrupt"]["stage"] == "authority_conversation"
 

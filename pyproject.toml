@@ -26,10 +26,13 @@ dependencies = [
     "google-genai",
     "twilio",
     "audioop-lts; python_version>='3.13'",
+    "lap>=0.5.13",
 ]
 
 [dependency-groups]
 dev = [
+    "imageio-ffmpeg>=0.6.0",
+    "playwright>=1.62.0",
     "pytest",
     "pytest-asyncio",
 ]

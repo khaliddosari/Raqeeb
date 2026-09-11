@@ -15,6 +15,11 @@ uploads/
 *.db
 .pytest_cache/
 
+# local copies of the demo clip for the dashboard's video player -- the source files
+# are already tracked at the repo root, these are just runtime-served duplicates
+static/test_clip.mp4
+static/test_clip_tracked.mp4
+
 # tracking outputs
 *_tracked.mp4
 *_tracks.csv

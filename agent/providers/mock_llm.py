@@ -23,7 +23,7 @@ class MockVoiceSession(VoiceSession):
         self._queue: asyncio.Queue[VoiceEvent] = asyncio.Queue()
         self._closed = False
 
-    async def start(self, system_instruction: str, tools: list[ToolSpec]) -> None:
+    async def start(self, system_instruction: str, tools: list[ToolSpec], language_code: str | None = None) -> None:
         self._tools = {t.name for t in tools}
 
     async def send_audio_chunk(self, pcm16_bytes: bytes) -> None:

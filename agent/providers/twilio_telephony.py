@@ -1,11 +1,14 @@
 """Twilio implementation of TelephonyProvider. Twilio is telephony only -- it places the
-call and streams raw audio; all conversational intelligence lives in Gemini
-(agent/voice/authority_call_session.py), which is bridged to the call's Media Stream.
+call; all conversational intelligence lives in the LLM_PROVIDER-selected model. How
+Twilio's audio reaches that model differs by provider: for LLM_PROVIDER=openai, the
+call is bridged directly to OpenAI's SIP connector (agent/voice/sip_authority_call.py)
+so audio never touches our server; otherwise it's streamed to our own Media Stream
+WebSocket (agent/voice/authority_call_session.py), which bridges it to the model.
 """
 
 from __future__ import annotations
 
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from agent.config import settings
 from agent.providers.base import TelephonyProvider
@@ -37,11 +40,30 @@ class TwilioTelephonyProvider(TelephonyProvider):
         return await asyncio.to_thread(_create)
 
     def build_stream_twiml(self, incident_id: str) -> str:
+        # No <Say> preamble -- the callee should hear the agent's own live greeting as
+        # the very first thing on the line, not a canned Twilio announcement first.
+        if settings.llm_provider.lower() == "openai":
+            return self._build_sip_twiml(incident_id)
         ws_url = f"{settings.public_base_url.replace('http', 'ws', 1)}/ws/twilio-media/{incident_id}"
         return (
             '<?xml version="1.0" encoding="UTF-8"?>'
             "<Response>"
-            "<Say>Connecting you to Raqeeb.</Say>"
             f'<Connect><Stream url="{ws_url}" /></Connect>'
+            "</Response>"
+        )
+
+    def _build_sip_twiml(self, incident_id: str) -> str:
+        # X-Incident-Id rides along on the SIP INVITE Twilio sends to OpenAI, so our
+        # realtime.call.incoming webhook (agent/routes/openai_routes.py) can match the
+        # call back to this incident -- OpenAI has no other way to know which incident
+        # a given inbound SIP session is for.
+        sip_uri = (
+            f"sip:{settings.openai_project_id}@sip.api.openai.com;transport=tls"
+            f"?X-Incident-Id={quote(incident_id)}"
+        )
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            "<Response>"
+            f"<Dial><Sip>{sip_uri}</Sip></Dial>"
             "</Response>"
         )

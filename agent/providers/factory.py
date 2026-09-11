@@ -21,6 +21,10 @@ def get_llm_provider() -> LLMProvider:
         from agent.providers.gemini_llm import GeminiLLMProvider
 
         return GeminiLLMProvider()
+    if provider == "openai":
+        from agent.providers.openai_llm import OpenAILLMProvider
+
+        return OpenAILLMProvider()
     raise ValueError(
         f"Unknown LLM_PROVIDER={provider!r}. Add a branch in agent/providers/factory.py "
         "to support a new provider (e.g. 'openai')."

@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from agent.config import settings
 from agent.db import init_db
-from agent.routes import _debug_resume, detection, twilio_routes, verification, voice_ws
+from agent.routes import detection, openai_routes, twilio_routes, verification, voice_ws
 
 
 @asynccontextmanager
@@ -24,7 +24,7 @@ app.include_router(detection.router)
 app.include_router(verification.router)
 app.include_router(voice_ws.router)
 app.include_router(twilio_routes.router)
-app.include_router(_debug_resume.router)
+app.include_router(openai_routes.router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/dashboard", StaticFiles(directory=STATIC_DIR, html=True), name="dashboard")

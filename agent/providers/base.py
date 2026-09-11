@@ -20,7 +20,12 @@ class ToolSpec:
 
 @dataclass
 class VoiceEvent:
-    type: Literal["audio", "transcript", "tool_call", "turn_complete", "closed"]
+    type: Literal["audio", "transcript", "tool_call", "turn_complete", "closed", "interrupted"]
+    """"interrupted": the model's in-progress response was cancelled because the other
+    party started talking (barge-in). The caller must flush any of that response's
+    audio it already forwarded downstream but that hasn't played yet -- otherwise the
+    old response keeps audibly playing from the downstream buffer even though the
+    model has already moved on, making barge-in look like it didn't work."""
     audio: bytes | None = None
     text: str | None = None
     tool_name: str | None = None
@@ -33,11 +38,20 @@ class VoiceEvent:
 class VoiceSession(ABC):
     """One realtime, duplex conversation (employee collection call or authority call)."""
 
-    @abstractmethod
-    async def start(self, system_instruction: str, tools: list[ToolSpec]) -> None: ...
+    #: Twilio's Media Streams carry 8kHz mu-law audio natively. Providers whose Live
+    #: API also speaks mu-law directly (e.g. OpenAI's Realtime API configured with
+    #: audio/pcmu) set this True so callers forward Twilio's bytes unconverted instead
+    #: of resampling to/from this provider's own native PCM rate (e.g. Gemini's
+    #: 16kHz-in/24kHz-out).
+    wants_raw_telephony_audio: bool = False
 
     @abstractmethod
-    async def send_audio_chunk(self, pcm16_bytes: bytes) -> None: ...
+    async def start(self, system_instruction: str, tools: list[ToolSpec], language_code: str | None = None) -> None: ...
+
+    @abstractmethod
+    async def send_audio_chunk(self, audio_bytes: bytes) -> None:
+        """PCM16 bytes at this provider's native input rate, unless
+        wants_raw_telephony_audio is True, in which case: raw 8kHz mu-law bytes."""
 
     @abstractmethod
     async def send_text(self, text: str) -> None:

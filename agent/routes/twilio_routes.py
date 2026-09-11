@@ -36,7 +36,6 @@ async def twilio_media_ws(websocket: WebSocket, incident_id: str):
         session = AuthorityCallSession(
             websocket,
             incident_id=incident_id,
-            report_summary=state.get("report_summary", ""),
             report=state.get("report", {}),
         )
         result = await session.run()

@@ -1,7 +1,8 @@
 """Drives the outbound authority phone call: bridges Twilio's Media Stream WebSocket
-(raw mu-law audio frames, Twilio's own JSON framing) to a Gemini Live voice session.
-Twilio only ever carries audio bytes here -- all conversational logic (what to say,
-when to ask for confirmation, interpreting the answer) is Gemini's."""
+(raw mu-law audio frames, Twilio's own JSON framing) to a realtime voice session
+(Gemini Live or OpenAI Realtime, whichever LLM_PROVIDER selects). Twilio only ever
+carries audio bytes here -- all conversational logic (what to say, when to ask for
+confirmation, interpreting the answer) is the model's."""
 
 from __future__ import annotations
 
@@ -12,74 +13,63 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from agent.audio_utils import pcm16_24k_to_twilio_mulaw, twilio_mulaw_to_pcm16
-from agent.providers.base import ToolSpec, VoiceEvent, VoiceSession
+from agent.audio_utils import TwilioAudioBridge
+from agent.providers.base import VoiceEvent, VoiceSession
 from agent.providers.factory import get_llm_provider
-
-RECORD_DISPATCH_CONFIRMATION_TOOL = ToolSpec(
-    name="record_dispatch_confirmation",
-    description="Call once the authority has responded to the dispatch request, with their decision.",
-    parameters={
-        "type": "object",
-        "properties": {
-            "confirmed": {"type": "boolean", "description": "True if they agreed to dispatch a team."},
-            "statement": {"type": "string", "description": "A short paraphrase of what they said."},
-        },
-        "required": ["confirmed", "statement"],
-    },
-)
+from agent.voice.authority_prompts import RECORD_DISPATCH_CONFIRMATION_TOOL, build_dispatch_instructions
 
 
 class AuthorityCallSession:
-    def __init__(self, websocket: WebSocket, *, incident_id: str, report_summary: str, report: dict[str, Any]) -> None:
+    def __init__(self, websocket: WebSocket, *, incident_id: str, report: dict[str, Any]) -> None:
         self.websocket = websocket
         self.incident_id = incident_id
-        self.report_summary = report_summary
         self.report = report
         self.stream_sid: str | None = None
         self.transcript: list[dict[str, str]] = []
         self._result: dict[str, Any] | None = None
         self._finished = asyncio.Event()
+        self._audio = TwilioAudioBridge()
+        self._hangup_safety_net_task: asyncio.Task | None = None
 
     def _system_instruction(self) -> str:
-        r = self.report
-        return (
-            "You are Raqeeb, calling on behalf of airport security. This is a phone call to "
-            "an external authority -- speak clearly and professionally, like a real dispatch "
-            "call, not a chatbot. In this order, tell them: "
-            "(1) this is an automated security incident notification; "
-            f"(2) the incident location: {r.get('location')}; "
-            f"(3) the detected prohibited item: {r.get('detected_item')}; "
-            "(4) that the detection was physically verified by an employee, not just an automated system; "
-            f"(5) the employee's name: {r.get('employee', {}).get('name')}; "
-            f"(6) the incident severity: {r.get('severity')}; "
-            f"(7) the incident ID: {self.incident_id}; "
-            "(8) confirm that the complete incident report has already been submitted to their system. "
-            "Then explicitly request that they dispatch the appropriate team to the location and "
-            "complete required procedures, and ask them to confirm. As soon as they give a clear "
-            "yes/no answer, call record_dispatch_confirmation with their decision and a short "
-            "paraphrase, then politely close the call. "
-            f"Additional context/summary: {self.report_summary}"
-        )
+        return build_dispatch_instructions(self.incident_id, self.report)
 
     async def run(self) -> dict[str, Any]:
         llm = get_llm_provider()
         session = llm.create_voice_session()
+        # Native-audio Gemini models reject an explicit speech_config.language_code --
+        # they're multilingual by default and pick up the target language from the
+        # system instruction itself instead. (OpenAI's provider ignores this too --
+        # it has no separate language config, same reasoning.)
         await session.start(self._system_instruction(), [RECORD_DISPATCH_CONFIRMATION_TOOL])
 
         recv_task = asyncio.create_task(self._pump_from_twilio(session))
+        events_task = asyncio.create_task(self._consume_events(session))
+        finished_task = asyncio.create_task(self._finished.wait())
         try:
-            async for event in session.receive_events():
-                await self._handle_event(session, event)
-                if self._finished.is_set() or event.type == "closed":
-                    break
+            # Race the event-consuming loop against the call-ended signal -- if Twilio
+            # hangs up before the model ever calls record_dispatch_confirmation,
+            # events_task would otherwise block forever waiting on a Gemini event that
+            # will never arrive.
+            await asyncio.wait({events_task, finished_task}, return_when=asyncio.FIRST_COMPLETED)
         finally:
             recv_task.cancel()
+            events_task.cancel()
+            finished_task.cancel()
+            if self._hangup_safety_net_task is not None:
+                self._hangup_safety_net_task.cancel()
             await session.close()
 
         return self._result or {"dispatch_confirmed": False, "authority_statement": "", "raw_transcript": self.transcript}
 
+    async def _consume_events(self, session: VoiceSession) -> None:
+        async for event in session.receive_events():
+            await self._handle_event(session, event)
+            if self._finished.is_set() or event.type == "closed":
+                return
+
     async def _pump_from_twilio(self, session: VoiceSession) -> None:
+        media_chunks = 0
         try:
             while True:
                 raw = await self.websocket.receive_text()
@@ -87,27 +77,54 @@ class AuthorityCallSession:
                 event = message.get("event")
                 if event == "start":
                     self.stream_sid = message["start"]["streamSid"]
+                    print(f"[DEBUG {self.incident_id}] twilio stream started, stream_sid={self.stream_sid}")
                 elif event == "media":
                     mulaw_bytes = base64.b64decode(message["media"]["payload"])
-                    await session.send_audio_chunk(twilio_mulaw_to_pcm16(mulaw_bytes))
+                    if session.wants_raw_telephony_audio:
+                        await session.send_audio_chunk(mulaw_bytes)
+                    else:
+                        await session.send_audio_chunk(self._audio.twilio_mulaw_to_pcm16(mulaw_bytes))
+                    media_chunks += 1
+                    if media_chunks % 100 == 0:
+                        print(f"[DEBUG {self.incident_id}] forwarded {media_chunks} media chunks to the model")
                 elif event == "stop":
+                    print(f"[DEBUG {self.incident_id}] twilio stream stopped after {media_chunks} chunks")
                     return
-        except Exception:
+        except Exception as exc:
+            print(f"[DEBUG {self.incident_id}] _pump_from_twilio raised: {exc!r}")
             return
+        finally:
+            # The call ended (hangup/disconnect) before the model ever called
+            # record_dispatch_confirmation -- without this, the run() loop below keeps
+            # waiting on Gemini events that will never come, and the incident's graph
+            # thread stays stuck at this interrupt forever.
+            self._finished.set()
 
-    async def _send_audio_to_twilio(self, pcm16_24k: bytes) -> None:
+    async def _send_audio_to_twilio(self, audio_bytes: bytes, *, raw_telephony_audio: bool) -> None:
         if not self.stream_sid:
             return
-        mulaw = pcm16_24k_to_twilio_mulaw(pcm16_24k)
+        mulaw = audio_bytes if raw_telephony_audio else self._audio.pcm16_24k_to_twilio_mulaw(audio_bytes)
         await self.websocket.send_text(
             json.dumps({"event": "media", "streamSid": self.stream_sid, "media": {"payload": base64.b64encode(mulaw).decode()}})
         )
 
+    async def _clear_twilio_playback_buffer(self) -> None:
+        if not self.stream_sid:
+            return
+        print(f"[DEBUG {self.incident_id}] barge-in: clearing Twilio's queued playback")
+        await self.websocket.send_text(json.dumps({"event": "clear", "streamSid": self.stream_sid}))
+
     async def _handle_event(self, session: VoiceSession, event: VoiceEvent) -> None:
         if event.type == "audio" and event.audio:
-            await self._send_audio_to_twilio(event.audio)
+            print(f"[DEBUG {self.incident_id}] got {len(event.audio)} bytes of audio from the model")
+            await self._send_audio_to_twilio(event.audio, raw_telephony_audio=session.wants_raw_telephony_audio)
+        elif event.type == "interrupted":
+            await self._clear_twilio_playback_buffer()
         elif event.type == "transcript" and event.text:
+            print(f"[DEBUG {self.incident_id}] transcript: {event.text!r}")
             self.transcript.append({"role": "assistant", "text": event.text})
+        elif event.type == "closed":
+            print(f"[DEBUG {self.incident_id}] voice session closed: {event.text!r}")
         elif event.type == "tool_call" and event.tool_name == "record_dispatch_confirmation":
             confirmed = bool(event.tool_args.get("confirmed"))
             statement = str(event.tool_args.get("statement", ""))
@@ -118,4 +135,12 @@ class AuthorityCallSession:
                 "raw_transcript": self.transcript,
             }
             await session.send_tool_response(event.tool_name, {"acknowledged": True}, event.tool_call_id)
-            self._finished.set()
+            # Don't hang up ourselves the instant we have a confirmation -- let the
+            # model finish its closing remark and let the *other party* end the call
+            # (handled by _pump_from_twilio's finally, once Twilio reports the stream
+            # stopped). This timer is only a safety net in case they never hang up.
+            self._hangup_safety_net_task = asyncio.create_task(self._hangup_safety_net())
+
+    async def _hangup_safety_net(self) -> None:
+        await asyncio.sleep(45)
+        self._finished.set()

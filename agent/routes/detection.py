@@ -59,6 +59,7 @@ def _serialize(incident: Incident) -> dict:
         "status": incident.status,
         "detection_class": incident.detection_class,
         "detection_confidence": incident.detection_confidence,
+        "image_filename": Path(incident.image_path).name if incident.image_path else None,
         "verification_status": incident.verification_status,
         "employee_name": incident.employee_name,
         "employee_id": incident.employee_id,

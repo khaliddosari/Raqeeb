@@ -13,11 +13,25 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # --- LLM provider (Gemini is the default; set LLM_PROVIDER=openai to swap later) ---
+    # --- LLM provider (Gemini is the default; set LLM_PROVIDER=openai to swap) ---
     llm_provider: str = "gemini"
     gemini_api_key: str = ""
     gemini_text_model: str = "gemini-3.6-flash"
     gemini_live_model: str = "gemini-2.5-flash-native-audio-latest"
+
+    # OpenAI's Realtime API (GA). Its audio/pcmu format is 8kHz mu-law -- the same
+    # encoding Twilio's Media Streams already use, so no resampling is needed on this
+    # path (see VoiceSession.wants_raw_telephony_audio).
+    openai_api_key: str = ""
+    openai_realtime_model: str = "gpt-realtime"
+    openai_voice: str = "marin"
+    openai_text_model: str = "gpt-4o-mini"
+
+    # SIP connector: Twilio dials sip.api.openai.com directly for the authority call
+    # (see TwilioTelephonyProvider.build_stream_twiml), bypassing our own server for
+    # audio entirely -- OpenAI notifies us of the call via this webhook instead.
+    openai_project_id: str = ""
+    openai_webhook_secret: str = ""
 
     # --- Telephony provider ---
     telephony_provider: str = "twilio"
@@ -53,14 +67,17 @@ class Settings(BaseSettings):
 
     # Required fields the report must have before it can be generated. Kept here (not
     # hard-coded in report.py) so ops can extend the checklist without a code change.
+    # location/employee_name/employee_id are stamped in automatically at detection time
+    # (see checkpoint_location above and start_incident() in graph/runner.py), so in
+    # practice suspect_name and suspect_id_number are the only two ever actively asked
+    # for -- whether by voice (agent/voice/employee_session.py) or the dashboard's quick
+    # form (agent/routes/verification.py's /manual-info).
     required_incident_fields: tuple[str, ...] = (
         "location",
         "suspect_name",
         "suspect_id_number",
-        "suspect_phone_number",
         "employee_name",
         "employee_id",
-        "employee_notes",
     )
 
 
