@@ -1,0 +1,42 @@
+# BoT-SORT tuned for Raqeeb X-ray belt footage.
+# Docs: https://docs.ultralytics.com/modes/track
+#
+# Measured on test_clip.mp4 (376 frames, 15 fps) against the stock configs:
+#
+#                     confirmed  mean hits  dropped frames  short tracks  IDs burned
+#   this config          20        42.9          43              2            48
+#   botsort.yaml         22        39.9          92              3            48
+#   bytetrack.yaml       21        40.3          13              4            74
+#
+#   "dropped frames" = frames where a track existed but the tracker lost it and
+#   picked it up again; "short tracks" = confirmed tracks under 10 frames, which on
+#   a belt this fast are almost always fragments of a longer one.
+#
+# Why these differ from the Ultralytics defaults:
+#   - gmc_method: none  -> the scanner camera is fixed. Global motion compensation
+#     estimates camera motion from optical flow, but the only things moving here are
+#     the bags themselves, so it "corrects" away the very motion the Kalman filter
+#     needs. That single change halves the dropped frames above. Belt travel is
+#     near-constant-velocity, which the plain Kalman model already predicts well.
+#   - track_buffer: 45  -> at 15 fps that keeps a lost track alive for ~3s, enough to
+#     bridge a weapon being occluded by dense clutter inside the same bag.
+#   - track_low_thresh / match_thresh -> X-ray weapon detections dim and brighten as
+#     items overlap. Keeping weak detections in the second association stage avoids an
+#     ID switch every time a gun passes behind a laptop.
+#   - new_track_thresh raised to 0.30 so those recovered weak detections attach to the
+#     existing track instead of spawning a duplicate one.
+
+tracker_type: botsort
+track_high_thresh: 0.25
+track_low_thresh: 0.05
+new_track_thresh: 0.30
+track_buffer: 45
+match_thresh: 0.85
+fuse_score: True
+
+gmc_method: none
+
+proximity_thresh: 0.5
+appearance_thresh: 0.8
+with_reid: False
+model: auto

@@ -9,3 +9,5 @@ seaborn
 pyyaml
 Pillow
 modal
+lap
+scipy
