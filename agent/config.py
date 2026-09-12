@@ -5,9 +5,16 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Settings below reads .env on its own, but config/authority_mapping.yaml expands
+# ${AUTHORITY_*} against os.environ, which pydantic-settings never populates -- without
+# this those overrides silently do nothing when they come from .env rather than a real
+# environment variable. override=False keeps real env vars winning over the file.
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
 class Settings(BaseSettings):

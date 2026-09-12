@@ -243,41 +243,96 @@ See `Model_Training.ipynb` for the full per-class breakdown and methodology.
 ## Voice agent app (`agent/`)
 
 The trained model above is wired into a full incident-response workflow: YOLO detects,
-an employee physically verifies, and a Google Gemini voice agent takes it from there --
-collecting incident details by voice, generating a structured report, routing it to the
-right authority, and placing/handling an outbound Twilio call to request dispatch.
-Orchestration and state live in a LangGraph graph (`agent/graph/workflow.py`); YOLO,
-Gemini, and Twilio are each confined to a single responsibility (detection, reasoning,
-telephony) and only ever exposed through provider interfaces
-(`agent/providers/base.py`), so swapping either the LLM or telephony backend never
-touches graph/route code.
+an employee physically verifies, and a voice agent takes it from there -- collecting
+incident details by voice, generating a structured report, routing it to the right
+authority, and placing/handling an outbound call to request dispatch. Orchestration and
+state live in a LangGraph graph (`agent/graph/workflow.py`); detection, reasoning and
+telephony are each confined to a single responsibility and only ever exposed through
+provider interfaces (`agent/providers/base.py`), so swapping either backend never
+touches graph or route code.
 
 ```
 YOLO Detection -> Display -> Employee Verification -> (false? -> END)
-  -> Gemini Voice Agent collects & validates incident info
+  -> Voice Agent collects & validates incident info
   -> Generate Report -> Determine Authority -> Send Report
-  -> Twilio Outbound Call -> Gemini <-> Authority Conversation -> Update Incident -> END
+  -> Outbound Call -> Agent <-> Authority Conversation -> Update Incident -> END
 ```
+
+### Providers
+
+Two axes, chosen independently by environment variable and resolved in
+`agent/providers/factory.py`:
+
+| | `LLM_PROVIDER` | `TELEPHONY_PROVIDER` |
+|---|---|---|
+| no credentials | `mock` | `mock` |
+| production | `gemini`, `openai` | `twilio`, `signalwire` |
+
+The LLM choice changes how call audio is routed, which is the most consequential
+difference in the app:
+
+- **`gemini`** -- Twilio streams the call into our own Media Stream WebSocket at
+  `/ws/twilio-media/{incident_id}`, and `agent/voice/authority_call_session.py` bridges
+  it to Gemini Live, resampling between Twilio's 8kHz mu-law and Gemini's 16kHz-in /
+  24kHz-out PCM.
+- **`openai`** -- Twilio instead dials `sip:$OPENAI_PROJECT_ID@sip.api.openai.com`
+  directly, so call audio never reaches this server at all. OpenAI announces the call
+  through a `realtime.call.incoming` webhook at `/api/openai/webhook`, matched back to
+  the incident via an `X-Incident-Id` SIP header. No resampling happens on this path:
+  the Realtime API speaks G.711 mu-law at 8kHz, exactly what Twilio Media Streams
+  already carry (`wants_raw_telephony_audio` in `agent/providers/base.py`).
+
+`signalwire` is a drop-in for `twilio` -- its Compatibility API mirrors Twilio's, and
+both reuse the same webhook routes.
+
+The employee-facing browser-mic session (`/ws/employee/{incident_id}`) is
+provider-agnostic and works with whichever LLM is selected.
 
 ### Run it
 
 ```bash
 uv sync
-cp .env.example .env   # fill in GEMINI_API_KEY / TWILIO_* for real mode
+cp .env.example .env
 uv run uvicorn agent.main:app --reload
 ```
 
 Open `http://localhost:8000/dashboard/` for the employee dashboard (upload a frame,
 verify the detection, then talk to the voice agent through the browser mic).
 
-Set `LLM_PROVIDER=mock` and `TELEPHONY_PROVIDER=mock` (the `.env.example` default) to
-run the entire workflow -- including the "Gemini" and "Twilio" steps -- with no API
-keys at all, useful for development and CI. Switch both to `gemini`/`twilio` once you
-have real credentials; nothing else changes.
+`.env.example` selects the mock providers, so that runs the entire workflow -- report
+generation, authority routing and the "call" included -- with no API keys at all. That
+is what the test suite and day-to-day development use.
+
+Going live is a matter of filling credentials and switching the two provider variables;
+no code changes. The app validates the combination at startup (`validate_settings()` in
+`agent/config.py`) and refuses to boot while anything required is missing, naming each
+one. That is deliberate: there is no silent fallback to the mocks, because a dispatch
+system that quietly stops phoning anyone is a worse failure than one that will not
+start. What each combination requires:
+
+| Setting | Requires |
+|---|---|
+| `LLM_PROVIDER=gemini` | `GEMINI_API_KEY` |
+| `LLM_PROVIDER=openai` | `OPENAI_API_KEY`, `OPENAI_WEBHOOK_SECRET` |
+| `LLM_PROVIDER=openai` + `TELEPHONY_PROVIDER=twilio` | also `OPENAI_PROJECT_ID` (the SIP destination) |
+| `TELEPHONY_PROVIDER=twilio` | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` |
+| `TELEPHONY_PROVIDER=signalwire` | `SIGNALWIRE_PROJECT_ID`, `SIGNALWIRE_TOKEN`, `SIGNALWIRE_SPACE_URL`, `SIGNALWIRE_PHONE_NUMBER` |
+
+Any non-mock telephony provider also needs `PUBLIC_BASE_URL` pointing at a publicly
+reachable HTTPS origin with no trailing slash (`ngrok http 8000` locally), since the
+provider calls back into this server. `LLM_PROVIDER=openai` additionally needs a webhook
+registered at platform.openai.com for `realtime.call.incoming`, pointing at
+`$PUBLIC_BASE_URL/api/openai/webhook`; the `whsec_...` it issues is
+`OPENAI_WEBHOOK_SECRET`. Requests are rejected outright when that secret is unset,
+rather than verified against an empty key.
 
 `config/authority_mapping.yaml` is the external CLASS -> AUTHORITY -> PHONE ->
-REPORT_ENDPOINT table the graph's `determine_authority` node reads; edit it (or the
-`AUTHORITY_*` env vars it references) to change routing without touching code.
+REPORT_ENDPOINT table the graph's `determine_authority` node reads; edit it, or set the
+`AUTHORITY_*` variables it references, to change routing without touching code. Its
+defaults are deliberately unreachable -- an unassignable placeholder number and an
+`example-authority.local` endpoint that short-circuits delivery -- so a fresh clone
+cannot phone or file against anyone real. Point them at your own number first: once
+telephony is not `mock`, a confirmed detection places a genuine call.
 
 ### Tests
 

@@ -13,35 +13,35 @@
 classes:
   Gun:
     name: "Airport Police - Armed Response Unit"
-    phone_number: "${AUTHORITY_GUN_PHONE:-+966554626773}"
+    phone_number: "${AUTHORITY_GUN_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_GUN_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
     default_severity: "critical"
 
   Knife:
     name: "Airport Security - Rapid Response"
-    phone_number: "${AUTHORITY_KNIFE_PHONE:-+966554626773}"
+    phone_number: "${AUTHORITY_KNIFE_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_KNIFE_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
     default_severity: "high"
 
   Pliers:
     name: "Airport Security - Standard Response"
-    phone_number: "${AUTHORITY_PLIERS_PHONE:-+966554626773}"
+    phone_number: "${AUTHORITY_PLIERS_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_PLIERS_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
     default_severity: "medium"
 
   Scissors:
     name: "Airport Security - Standard Response"
-    phone_number: "${AUTHORITY_SCISSORS_PHONE:-+966554626773}"
+    phone_number: "${AUTHORITY_SCISSORS_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_SCISSORS_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
     default_severity: "low"
 
   Wrench:
     name: "Airport Security - Standard Response"
-    phone_number: "${AUTHORITY_WRENCH_PHONE:-+966554626773}"
+    phone_number: "${AUTHORITY_WRENCH_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_WRENCH_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
     default_severity: "low"
@@ -49,7 +49,7 @@ classes:
 # Fallback used when a detected class has no explicit mapping above.
 default:
   name: "Airport Security - General Desk"
-  phone_number: "${AUTHORITY_DEFAULT_PHONE:-+966554626773}"
+  phone_number: "${AUTHORITY_DEFAULT_PHONE:-+966500000000}"
   report_endpoint: "${AUTHORITY_DEFAULT_ENDPOINT:-https://example-authority.local/api/incidents}"
   endpoint_type: "webhook"
   default_severity: "medium"

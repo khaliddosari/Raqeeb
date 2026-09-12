@@ -18,6 +18,12 @@ async def send_report(authority: AuthorityConfig, report: dict[str, Any]) -> boo
         # webhook/API in config/authority_mapping.yaml to actually deliver reports.
         return True
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        response = await client.post(authority.report_endpoint, json=report)
-        return response.status_code < 300
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.post(authority.report_endpoint, json=report)
+            return response.status_code < 300
+    except httpx.HTTPError:
+        # An unreachable authority must not strand the incident: the caller records
+        # report_send_failed and the graph still goes on to place the dispatch call,
+        # which is the half that actually gets a team moving.
+        return False
