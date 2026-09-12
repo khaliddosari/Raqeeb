@@ -25,7 +25,7 @@ static/test_clip.mp4
 
 # ...except the dashboard's demo clip, which ships with the repo so the landing page
 # works on a fresh clone without anyone re-running track_video.py
-!static/test_clip_tracked.mp4
+!frontend/public/test_clip_tracked.mp4
 
 # synthetic belt clips
 belt_*.mp4
