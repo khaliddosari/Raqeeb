@@ -6,18 +6,14 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from agent.config import settings
+from agent.config import settings, validate_settings
 from agent.db import init_db
 from agent.routes import detection, openai_routes, twilio_routes, verification, voice_ws
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.llm_provider.lower() == "openai" and not settings.openai_webhook_secret:
-        raise RuntimeError(
-            "LLM_PROVIDER=openai requires OPENAI_WEBHOOK_SECRET -- the SIP callback in "
-            "agent/routes/openai_routes.py cannot authenticate OpenAI without it."
-        )
+    validate_settings()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     init_db()
     yield

@@ -84,6 +84,60 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
+_REQUIRED_BY_LLM: dict[str, tuple[str, ...]] = {
+    "mock": (),
+    "gemini": ("gemini_api_key",),
+    "openai": ("openai_api_key", "openai_webhook_secret"),
+}
+
+_REQUIRED_BY_TELEPHONY: dict[str, tuple[str, ...]] = {
+    "mock": (),
+    "twilio": ("twilio_account_sid", "twilio_auth_token", "twilio_phone_number"),
+    "signalwire": (
+        "signalwire_project_id",
+        "signalwire_token",
+        "signalwire_space_url",
+        "signalwire_phone_number",
+    ),
+}
+
+
+def validate_settings() -> None:
+    """Fail at boot rather than mid-incident. There is deliberately no silent fallback
+    to the mock providers when credentials are absent: a dispatch system that quietly
+    stops phoning anyone is a worse failure than one that refuses to start."""
+    llm = settings.llm_provider.lower()
+    telephony = settings.telephony_provider.lower()
+
+    if llm not in _REQUIRED_BY_LLM:
+        raise RuntimeError(
+            f"Unknown LLM_PROVIDER={settings.llm_provider!r}; expected one of {sorted(_REQUIRED_BY_LLM)}."
+        )
+    if telephony not in _REQUIRED_BY_TELEPHONY:
+        raise RuntimeError(
+            f"Unknown TELEPHONY_PROVIDER={settings.telephony_provider!r}; "
+            f"expected one of {sorted(_REQUIRED_BY_TELEPHONY)}."
+        )
+
+    missing = [
+        name
+        for name in _REQUIRED_BY_LLM[llm] + _REQUIRED_BY_TELEPHONY[telephony]
+        if not getattr(settings, name)
+    ]
+    # Twilio dials OpenAI's SIP endpoint by project id on this combination, so it is
+    # only required when both halves are in play.
+    if llm == "openai" and telephony == "twilio" and not settings.openai_project_id:
+        missing.append("openai_project_id")
+
+    if missing:
+        raise RuntimeError(
+            f"LLM_PROVIDER={llm} / TELEPHONY_PROVIDER={telephony} requires "
+            + ", ".join(sorted(name.upper() for name in missing))
+            + ". Set them in .env, or select the mock providers to run without "
+            "credentials (see .env.example)."
+        )
+
+
 def is_mock_llm() -> bool:
     return settings.llm_provider.lower() == "mock"
 
