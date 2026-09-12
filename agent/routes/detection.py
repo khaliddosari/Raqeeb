@@ -11,7 +11,7 @@ from agent.db import get_db
 from agent.graph.runner import start_incident
 from agent.models import Incident
 from agent.report import new_incident_id
-from agent.yolo_detector import NoDetectionError
+from agent.yolo_detector import NoDetectionError, YoloDetector
 
 router = APIRouter(prefix="/api", tags=["detection"])
 
@@ -36,7 +36,13 @@ async def detect(image: UploadFile, employee_name: str = Form(...), employee_id:
     except NoDetectionError:
         raise HTTPException(status_code=422, detail="No prohibited item detected in this frame.")
 
-    return {"incident_id": incident_id, "interrupt": result["interrupt"]}
+    annotated = YoloDetector.annotated_path_for(str(image_path))
+    return {
+        "incident_id": incident_id,
+        "interrupt": result["interrupt"],
+        "image_filename": image_path.name,
+        "annotated_filename": annotated.name if annotated.exists() else None,
+    }
 
 
 @router.get("/incidents")
@@ -54,12 +60,19 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
 
 
 def _serialize(incident: Incident) -> dict:
+    annotated = None
+    if incident.image_path:
+        candidate = YoloDetector.annotated_path_for(incident.image_path)
+        if candidate.exists():
+            annotated = candidate.name
+
     return {
         "id": incident.id,
         "status": incident.status,
         "detection_class": incident.detection_class,
         "detection_confidence": incident.detection_confidence,
         "image_filename": Path(incident.image_path).name if incident.image_path else None,
+        "annotated_filename": annotated,
         "verification_status": incident.verification_status,
         "employee_name": incident.employee_name,
         "employee_id": incident.employee_id,

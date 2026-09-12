@@ -8,6 +8,7 @@ from typing import Any
 
 from langgraph.types import Command
 
+from agent import monitor
 from agent.config import settings
 from agent.db import SessionLocal
 from agent.graph.workflow import compiled_graph, thread_config
@@ -56,6 +57,13 @@ def _sync_db(incident_id: str, state: dict[str, Any]) -> None:
             )
         )
         db.commit()
+        monitor.publish_status(
+            incident_id,
+            incident.status,
+            detection_class=incident.detection_class,
+            authority_name=incident.authority_name,
+            call_sid=incident.call_sid,
+        )
     finally:
         db.close()
 

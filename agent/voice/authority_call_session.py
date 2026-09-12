@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from agent import monitor
 from agent.audio_utils import TwilioAudioBridge
 from agent.providers.base import VoiceEvent, VoiceSession
 from agent.providers.factory import get_llm_provider
@@ -123,12 +124,18 @@ class AuthorityCallSession:
         elif event.type == "transcript" and event.text:
             print(f"[DEBUG {self.incident_id}] transcript: {event.text!r}")
             self.transcript.append({"role": "assistant", "text": event.text})
+            monitor.publish_transcript(self.incident_id, "assistant", event.text)
         elif event.type == "closed":
             print(f"[DEBUG {self.incident_id}] voice session closed: {event.text!r}")
         elif event.type == "tool_call" and event.tool_name == "record_dispatch_confirmation":
             confirmed = bool(event.tool_args.get("confirmed"))
             statement = str(event.tool_args.get("statement", ""))
             self.transcript.append({"role": "authority", "text": statement})
+            monitor.publish_transcript(self.incident_id, "authority", statement)
+            monitor.publish(
+                self.incident_id,
+                {"type": "dispatch", "confirmed": confirmed, "statement": statement},
+            )
             self._result = {
                 "dispatch_confirmed": confirmed,
                 "authority_statement": statement,

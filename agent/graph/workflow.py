@@ -32,7 +32,7 @@ from agent.yolo_detector import get_detector
 async def yolo_detection_node(state: IncidentState) -> dict[str, Any]:
     if state.get("detection_class") is not None:
         return {}
-    result = get_detector().detect(state["image_path"])
+    result = get_detector().detect(state["image_path"], annotate=True)
     return {"detection_class": result.detected_class, "detection_confidence": result.confidence, "status": "detected"}
 
 

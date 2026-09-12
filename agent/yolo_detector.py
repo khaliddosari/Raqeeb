@@ -33,17 +33,37 @@ class YoloDetector:
             self._model = YOLO(self.weights_path)
         return self._model
 
-    def detect(self, image_path: str) -> DetectionResult:
+    @staticmethod
+    def annotated_path_for(image_path: str) -> Path:
+        """Where the boxed render of image_path lives. Derived by convention rather than
+        stored, so nothing downstream has to thread an extra path around."""
+        p = Path(image_path)
+        return p.with_name(f"{p.stem}_annotated.png")
+
+    def detect(self, image_path: str, annotate: bool = False) -> DetectionResult:
         """Runs inference and returns the single highest-confidence detection.
 
         Raises NoDetectionError if nothing clears the confidence threshold. Never
         called again for the same incident once a DetectionResult is stored.
+
+        annotate=True additionally writes a boxed render next to the source image, from
+        this same inference pass. It is a rendering side effect only: the returned
+        DetectionResult is identical either way, and a failure to write never fails the
+        detection.
         """
         # device="cpu" pinned deliberately -- this only needs to run once per incident,
         # and pinning avoids environments where torch detects a GPU but the installed
         # CUDA build doesn't actually match the driver/hardware (kernel image errors).
         results = self.model.predict(image_path, verbose=False, device="cpu")
         r = results[0]
+
+        if annotate:
+            try:
+                import cv2
+
+                cv2.imwrite(str(self.annotated_path_for(image_path)), r.plot())
+            except Exception:
+                pass
 
         best_cls: int | None = None
         best_conf = 0.0
