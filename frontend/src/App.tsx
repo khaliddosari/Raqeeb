@@ -1,6 +1,7 @@
 import { Pause as PauseIcon, Play as PlayIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { SectionShell } from "@/components/SectionShell"
+import { toPlainText } from "@/lib/plaintext"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -71,6 +72,9 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(true)
+  const [suspectName, setSuspectName] = useState("")
+  const [suspectId, setSuspectId] = useState("")
+  const [suspectNotes, setSuspectNotes] = useState("")
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
@@ -126,6 +130,9 @@ export default function App() {
     setBusy("Running detection")
     setError(null)
     setFeed([])
+    setSuspectName("")
+    setSuspectId("")
+    setSuspectNotes("")
     try {
       const res = await detect(file, employeeName, employeeId)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
@@ -166,11 +173,11 @@ export default function App() {
   const report = incident?.report
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-20 border-b border-border/60 bg-background/85 backdrop-blur">
+    <div className="min-h-screen text-foreground">
+      <header className="sticky top-0 z-20 border-b border-white/40 bg-background/55 backdrop-blur-xl backdrop-saturate-150">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:gap-x-6">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="grid size-7 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground text-xs font-bold">
+            <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground text-xs font-bold shadow-sm ring-1 ring-white/20">
               R
             </div>
             <span className="font-semibold tracking-tight">Raqeeb</span>
@@ -359,17 +366,68 @@ export default function App() {
                       </Button>
                     </>
                   )}
-                  {incident.status === "verified" && (
-                    <Button
-                      size="sm"
-                      className="h-11 w-full sm:h-8 sm:w-auto"
-                      onClick={() => act("info", () => submitInfo(incident.id, "Test Subject", "0000000000", "Cooperative."))}
-                      disabled={busy !== null}
-                    >
-                      Submit suspect details
-                    </Button>
-                  )}
                 </div>
+
+                {incident.status === "verified" && (
+                  <form
+                    className="flex flex-col gap-4 rounded-xl border border-white/50 bg-white/40 p-4 backdrop-blur-sm"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void act("info", () =>
+                        submitInfo(incident.id, suspectName.trim(), suspectId.trim(), suspectNotes.trim() || undefined),
+                      )
+                    }}
+                  >
+                    <div>
+                      <p className="text-sm font-medium">Suspect details</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Typed alternative to collecting these by voice. Both fields are required before a
+                        report can be generated.
+                      </p>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label htmlFor="suspect-name">Full name</Label>
+                        <Input
+                          id="suspect-name"
+                          value={suspectName}
+                          onChange={(e) => setSuspectName(e.target.value)}
+                          placeholder="e.g. Faisal Al-Harbi"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="suspect-id">ID number</Label>
+                        <Input
+                          id="suspect-id"
+                          value={suspectId}
+                          onChange={(e) => setSuspectId(e.target.value)}
+                          placeholder="e.g. 1093847562"
+                          inputMode="numeric"
+                          autoComplete="off"
+                          className="font-mono"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="suspect-notes">Inspection notes (optional)</Label>
+                      <Input
+                        id="suspect-notes"
+                        value={suspectNotes}
+                        onChange={(e) => setSuspectNotes(e.target.value)}
+                        placeholder="e.g. Cooperative, detained at checkpoint"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="h-11 w-full sm:h-9 sm:w-auto sm:self-start"
+                      disabled={busy !== null || !suspectName.trim() || !suspectId.trim()}
+                    >
+                      {busy === "info" ? "Generating report…" : "Submit suspect details"}
+                    </Button>
+                  </form>
+                )}
               </CardContent>
             </Card>
           )}
@@ -411,8 +469,11 @@ export default function App() {
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-72 pr-4">
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-                      {incident?.report_summary}
+                    <p
+                      dir="auto"
+                      className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
+                    >
+                      {toPlainText(incident?.report_summary)}
                     </p>
                   </ScrollArea>
                 </CardContent>
@@ -548,7 +609,7 @@ export default function App() {
                         <Separator />
                         <div>
                           <p className="text-xs uppercase tracking-wide text-muted-foreground">Recommended action</p>
-                          <p className="mt-1 leading-relaxed">{report.recommended_action}</p>
+                          <p dir="auto" className="mt-1 leading-relaxed">{toPlainText(report.recommended_action)}</p>
                         </div>
                       </>
                     )}
@@ -573,7 +634,7 @@ export default function App() {
                       </span>
                     </div>
                     {dispatch.authority_statement && (
-                      <p className="rounded-md border border-border/60 bg-muted/40 p-3 text-sm leading-relaxed">
+                      <p className="rounded-xl border border-white/50 bg-white/45 p-3 text-sm leading-relaxed backdrop-blur-sm">
                         “{dispatch.authority_statement}”
                       </p>
                     )}
