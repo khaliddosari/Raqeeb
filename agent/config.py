@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # --- Storage ---
     database_url: str = "sqlite:///./raqeeb.db"
 
+    # Where LangGraph parks incidents paused on an interrupt. Must be durable
+    # storage anywhere the process can restart or scale to zero between the pause
+    # and the resume; ":memory:" opts out.
+    checkpoint_db: str = "./raqeeb_checkpoints.db"
+
     # --- YOLO ---
     yolo_weights_path: str = str(BASE_DIR / "best_yolov8s.pt")
     yolo_confidence_threshold: float = 0.25

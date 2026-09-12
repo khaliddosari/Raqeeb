@@ -11,9 +11,12 @@ session's answer.
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, StateGraph
 from langgraph.types import interrupt
 
@@ -200,13 +203,54 @@ def build_graph():
     graph.add_edge("update_incident", END)
     graph.add_edge("false_positive_end", END)
 
-    return graph.compile(checkpointer=MemorySaver())
+    return graph
 
 
-# Single shared compiled graph + checkpointer for the process. Swap MemorySaver for a
-# persistent checkpointer (e.g. SqliteSaver/PostgresSaver) in production so incidents
-# survive a restart while paused on an interrupt.
-compiled_graph = build_graph()
+async def _checkpointer():
+    """Where paused incidents live between interrupts.
+
+    The graph deliberately stops at employee verification and info collection and waits
+    for a later HTTP request to resume. That state has to outlive the gap. In memory it
+    does not survive a restart, and on a platform that scales to zero the resume can land
+    on a container that never saw the interrupt, so the incident is simply lost.
+
+    So: SQLite on disk by default, pointed at CHECKPOINT_DB. On Modal that path lives on
+    a Volume, which is what makes scale-to-zero safe there. Set CHECKPOINT_DB=:memory:
+    to opt out, which the tests do so each run starts clean.
+
+    Async variant deliberately: the graph is driven with ainvoke, and the sync SqliteSaver
+    raises NotImplementedError on every async method.
+    """
+    path = settings.checkpoint_db
+    if path == ":memory:":
+        return MemorySaver()
+
+    global _saver_cm
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    # from_conn_string is an async context manager, but the connection has to live as
+    # long as the process, so it is entered here and never exited. The context manager
+    # itself is kept alive deliberately: dropping it closes the connection underneath.
+    _saver_cm = AsyncSqliteSaver.from_conn_string(path)
+    saver = await _saver_cm.__aenter__()
+    await saver.setup()
+    return saver
+
+
+_compiled = None
+_compile_lock = asyncio.Lock()
+# held for the process lifetime; see _checkpointer()
+_saver_cm = None
+
+
+async def get_compiled_graph():
+    """Compiled once per process, on first use. Lazy because the checkpointer needs an
+    event loop, which does not exist at import time."""
+    global _compiled
+    if _compiled is None:
+        async with _compile_lock:
+            if _compiled is None:
+                _compiled = build_graph().compile(checkpointer=await _checkpointer())
+    return _compiled
 
 
 def thread_config(incident_id: str) -> dict[str, Any]:

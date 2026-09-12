@@ -306,14 +306,31 @@ provider-agnostic and works with whichever LLM is selected.
 
 ### Run it
 
+The dashboard is a separate Vite + React app under `frontend/`, and its build output is not
+committed, so it has to be built once before the server has anything to serve:
+
 ```bash
 uv sync
 cp .env.example .env
+
+cd frontend && npm install && npm run build && cd ..
+
 uv run uvicorn agent.main:app --reload
 ```
 
 Open `http://localhost:8000/dashboard/` for the employee dashboard (upload a frame,
 verify the detection, then talk to the voice agent through the browser mic).
+
+Skipping the build is the usual first stumble: FastAPI mounts `frontend/dist` only when it
+exists, so without it `/dashboard/` is simply a 404 with no hint as to why.
+
+While working on the UI, run the Vite dev server instead and use `http://localhost:5173`.
+It serves `frontend/src` directly with hot reload and proxies API and WebSocket calls to
+port 8000, so you do not rebuild on every change:
+
+```bash
+cd frontend && npm run dev
+```
 
 `.env.example` selects the mock providers, so that runs the entire workflow -- report
 generation, authority routing and the "call" included -- with no API keys at all. That

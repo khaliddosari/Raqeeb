@@ -16,13 +16,13 @@ were made, what is deliberately unfinished, and the traps that have already cost
 Everything is merged to `main`. There are no open branches or pull requests. `origin/agentVoice`
 still exists but is fully contained in `main` and is safe to delete.
 
-Three people have contributed. Nawaf built the report generator. Yazeed built the voice agent,
-the OpenAI Realtime provider with SIP bridging, and the dashboard. Khalid built the detection
-model, the tracking and MOT benchmark, and owns the repo.
+Four people are on the project. Nawaf built the report generator. Yazeed built the voice
+agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detection model,
+the tracking and MOT benchmark, and owns the repo. Omar is the fourth contributor.
 
 The test suite is three tests, all passing, all driving the LangGraph workflow with mock
-providers. There is no CI. Nothing runs these automatically, so run `uv run pytest tests/`
-yourself before pushing.
+providers. They cover the graph and nothing else: no route, no WebSocket, and none of the
+frontend is tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
 
 ## How the pieces fit
 
@@ -68,6 +68,38 @@ G.711 mu-law the telephony media streams already carry.
 
 `signalwire` is a drop-in replacement for `twilio`; its compatibility API mirrors Twilio's and
 both reuse the same webhook routes.
+
+## The dashboard
+
+`frontend/` is a separate Vite and React application, not templates served by FastAPI. It is a
+single page laid out in the order an operator reads it: detection preview, inference, report,
+authority call, judgment.
+
+Components come from shadcn, installed through its CLI on the **Base UI** primitive layer
+rather than Radix (`components.json` says `base-nova`). Do not mix the two. If you add a
+component, use the CLI so it matches; hand-written Radix imports will pull a second primitive
+library into the bundle.
+
+**You must build it before the backend can serve it.** `frontend/dist` is gitignored, so a
+fresh clone has no dashboard at all until you run `npm run build`. FastAPI mounts that
+directory at `/dashboard` only if it exists, so a missing build is a 404 rather than an error
+that explains itself.
+
+Two ways to run it:
+
+| Port | What it serves | When |
+|---|---|---|
+| 8000 | the built bundle, via FastAPI | checking the real thing; needs `npm run build` first |
+| 5173 | `frontend/src` directly, via Vite | changing the UI; hot reload, proxies API and WebSocket to 8000 |
+
+The page talks to the backend through `frontend/src/lib/api.ts`. It defaults to same origin and
+reads `VITE_API_BASE_URL` when the two are deployed separately, which is how the Vercel and
+Modal split works.
+
+Two backend features exist only to feed this page. `detect()` writes a boxed render alongside
+the source image, exposed as `annotated_filename`. And `agent/monitor.py` plus
+`/ws/monitor/{incident_id}` stream transcript turns, status changes and the dispatch decision
+live, because the call transcript was previously only visible after the call ended.
 
 ## Recent work, and why
 
@@ -126,6 +158,19 @@ ngrok issues a new URL on every restart, so this value is per-session.
 **Twilio trial accounts only dial verified numbers.** A live call to an unverified destination
 fails without an obvious explanation.
 
+**Port 8000 shows stale UI until you rebuild.** It serves `frontend/dist`, so source edits
+are invisible there until `npm run build`. Port 5173 always reflects source. More than one
+person has "fixed" a bug that was only a stale bundle.
+
+**The model emits markdown and the UI strips it at render.** `frontend/src/lib/plaintext.ts`
+flattens it, and the report text uses `dir="auto"` so Arabic lays out right to left. Both are
+safety nets over an unpinned prompt, not the fix. If you pin the prompt, leave them anyway.
+
+**Report timestamps are Riyadh local, stored timestamps are UTC.** `agent/report.py` uses a
+fixed UTC+3 offset for `date_time` and the incident id, because Saudi Arabia has no DST and
+Windows ships no IANA database. `created_at` and `updated_at` in `models.py` stay UTC on
+purpose. Do not "unify" these without thinking about which is which.
+
 **Model output language is not pinned.** With a real Gemini key, report generation has produced
 a 2,500 character Arabic summary where the mock produces roughly 250 characters of English.
 Nothing breaks, but the dashboard renders that field and the voice agent reads it aloud to the
@@ -145,16 +190,31 @@ Ultralytics YOLOv8-OBB for detection, trained on Modal via `modal_train.py`. Ope
 retuned BoT-SORT for tracking. FastAPI, SQLAlchemy over SQLite, and LangGraph for the
 application. Provider SDKs are `google-genai` for Gemini and `twilio` for telephony; the OpenAI
 path deliberately uses `httpx` and `websockets` directly rather than the OpenAI SDK. `ffmpeg`
-arrives through `imageio-ffmpeg` in the dev group and is needed only for `--fps`. Deployment is
-Render, configured by `render.yaml`. The dataset comes from Roboflow and needs a key only for
-the notebooks.
+arrives through `imageio-ffmpeg` in the dev group and is needed only for `--fps`. The dataset
+comes from Roboflow and needs a key only for the notebooks.
+
+The dashboard needs Node. It is Vite, React 19, TypeScript and Tailwind v4, with shadcn
+components on Base UI primitives and Lucide icons. `npm install` then `npm run build` in
+`frontend/`.
+
+Deployment is split: the frontend goes to Vercel, the backend to Modal. `render.yaml` is
+left over from an earlier plan and no longer reflects how this deploys.
 
 ## Future work
 
-**Test the SIP path.** This is the most valuable gap. The webhook signature verification in
-`agent/routes/openai_routes.py` has been checked only by hand: a valid signature is accepted,
-forgeries with an empty or wrong key are rejected, and stale timestamps are rejected. None of
-that is in `tests/`, so nothing prevents a regression on security-relevant code.
+**DEFERRED: test the SIP webhook.** Known gap, consciously postponed on 2026-09-12 to get
+deployment done first. Pick this up next.
+
+The signature verification in `agent/routes/openai_routes.py` is security relevant and has
+only ever been checked by hand. Those manual checks did pass: a correctly signed request is
+accepted, forgeries signed with an empty or wrong key are rejected with 400, a stale
+timestamp is rejected, and an unset secret fails closed with 500 rather than verifying
+against an empty key. None of it is in `tests/`, so nothing stops a regression, and the bug
+this code exists to prevent was live in the repo once already (see `1f9ffa4`).
+
+Writing it is not hard: the four cases above are straightforward to drive against
+`_verify_signature` directly, no live call needed. It was left undone for time, not
+difficulty.
 
 **Pin the report language and length.** Decide whether reports are Arabic or English and say so
 explicitly in the instruction in `agent/report.py`, and cap the summary. Right now the model

@@ -39,6 +39,14 @@ const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 })
 
+const TEST_IMAGE_URL = `${import.meta.env.BASE_URL}test-image.png`
+
+const SUSPECT_DEFAULTS = {
+  name: "Faisal",
+  id: "1093847562",
+  notes: "Suspect is cooperative and calm",
+}
+
 const PIPELINE = ["detected", "pending_verification", "verified", "report_sent", "call_in_progress", "closed"]
 
 function StatusDot({ tone }: { tone: "idle" | "active" | "done" | "alert" }) {
@@ -80,9 +88,9 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(true)
-  const [suspectName, setSuspectName] = useState("")
-  const [suspectId, setSuspectId] = useState("")
-  const [suspectNotes, setSuspectNotes] = useState("")
+  const [suspectName, setSuspectName] = useState(SUSPECT_DEFAULTS.name)
+  const [suspectId, setSuspectId] = useState(SUSPECT_DEFAULTS.id)
+  const [suspectNotes, setSuspectNotes] = useState(SUSPECT_DEFAULTS.notes)
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 1000)
@@ -138,11 +146,34 @@ export default function App() {
     setBusy("Running detection")
     setError(null)
     setFeed([])
-    setSuspectName("")
-    setSuspectId("")
-    setSuspectNotes("")
+    setSuspectName(SUSPECT_DEFAULTS.name)
+    setSuspectId(SUSPECT_DEFAULTS.id)
+    setSuspectNotes(SUSPECT_DEFAULTS.notes)
     try {
       const res = await detect(file, employeeName, employeeId)
+      if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
+      await refresh(res.incident_id)
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const runTestImage = async () => {
+    setBusy("Running detection")
+    setError(null)
+    setFeed([])
+    setSuspectName(SUSPECT_DEFAULTS.name)
+    setSuspectId(SUSPECT_DEFAULTS.id)
+    setSuspectNotes(SUSPECT_DEFAULTS.notes)
+    try {
+      const blob = await (await fetch(TEST_IMAGE_URL)).blob()
+      const testFile = new File([blob], "test-image.png", { type: blob.type || "image/png" })
+      setFile(testFile)
+      setPreviewUrl(TEST_IMAGE_URL)
+      setAnnotated(null)
+      const res = await detect(testFile, employeeName, employeeId)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -315,6 +346,34 @@ export default function App() {
                 <Button onClick={runDetection} disabled={!file || busy !== null} className="w-full">
                   {busy === "Running detection" ? "Running detection…" : "Run detection"}
                 </Button>
+
+                <div className="flex flex-col gap-2 rounded-xl border border-white/50 bg-white/40 p-3 backdrop-blur-sm">
+                  <Button
+                    variant="secondary"
+                    onClick={runTestImage}
+                    disabled={busy !== null}
+                    className="w-full"
+                  >
+                    {busy === "Running detection" ? "Running…" : "Run test image"}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={runTestImage}
+                    disabled={busy !== null}
+                    className="overflow-hidden rounded-lg border border-white/60 disabled:cursor-not-allowed"
+                    aria-label="Run detection on the bundled test image"
+                  >
+                    <img
+                      src={TEST_IMAGE_URL}
+                      alt="Bundled X-ray test frame"
+                      className="block w-full cursor-pointer bg-white transition hover:opacity-90"
+                    />
+                  </button>
+                  <p className="text-xs text-muted-foreground">
+                    A bundled X-ray frame, for trying the pipeline without finding an image.
+                  </p>
+                </div>
+
                 {incident && (
                   <p className="font-mono text-xs text-muted-foreground wrap-break-word">{incident.id}</p>
                 )}

@@ -16,7 +16,9 @@ from agent.schemas import DetectionResult
 
 
 class _FakeDetector:
-    def detect(self, image_path: str) -> DetectionResult:
+    # annotate is accepted and ignored: the graph asks for a boxed render, which is a
+    # rendering side effect the workflow does not depend on.
+    def detect(self, image_path: str, annotate: bool = False) -> DetectionResult:
         return DetectionResult(detected_class="Knife", confidence=0.87)
 
 

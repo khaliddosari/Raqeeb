@@ -11,7 +11,7 @@ from langgraph.types import Command
 from agent import monitor
 from agent.config import settings
 from agent.db import SessionLocal
-from agent.graph.workflow import compiled_graph, thread_config
+from agent.graph.workflow import get_compiled_graph, thread_config
 from agent.models import AuditLog, Incident
 
 
@@ -86,17 +86,21 @@ async def start_incident(
             "employee_id": employee_id,
         },
     }
-    result = await compiled_graph.ainvoke(initial_state, config)
+    result = await (await get_compiled_graph()).ainvoke(initial_state, config)
     _sync_db(incident_id, result)
     return {"state": result, "interrupt": _extract_interrupt(result)}
 
 
 async def resume_incident(incident_id: str, resume_value: Any) -> dict[str, Any]:
     config = thread_config(incident_id)
-    result = await compiled_graph.ainvoke(Command(resume=resume_value), config)
+    result = await (await get_compiled_graph()).ainvoke(Command(resume=resume_value), config)
     _sync_db(incident_id, result)
     return {"state": result, "interrupt": _extract_interrupt(result)}
 
 
 def get_incident_snapshot(incident_id: str):
-    return compiled_graph.get_state(thread_config(incident_id))
+    from agent.graph import workflow
+
+    if workflow._compiled is None:
+        raise RuntimeError("graph not initialised yet; no incident can exist")
+    return workflow._compiled.get_state(thread_config(incident_id))
