@@ -372,7 +372,6 @@ telephony is not `mock`, a confirmed detection places a genuine call.
 ```bash
 uv run pytest tests/
 ```
-
 `tests/test_workflow_mock.py` drives the whole LangGraph workflow end-to-end with the
 mock providers, asserting the detection fields are never mutated downstream, the
 false-positive branch only triggers on the employee's own decision (via the dashboard
