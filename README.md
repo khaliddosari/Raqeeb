@@ -10,7 +10,6 @@ No Roboflow account, no `.env`, no Modal needed for this. Just the weights and `
 ```bash
 git clone https://github.com/khaliddosari/Raqeeb.git
 cd Raqeeb
-git lfs pull          # pulls best_yolov8s.pt / best_yolov8n.pt (skip if git-lfs isn't installed and just download the file manually)
 pip install ultralytics
 ```
 
@@ -172,11 +171,10 @@ roughly where the knee is, not a production accuracy figure.
 
 Only needed to re-run the notebooks, re-download the dataset, or retrain.
 
-1. Clone the repo and pull LFS files (trained weights):
+1. Clone the repo (the trained weights come with it):
    ```bash
    git clone https://github.com/khaliddosari/Raqeeb.git
    cd Raqeeb
-   git lfs pull
    ```
 2. Copy `.env.example` to `.env` and fill in your own Roboflow API key:
    ```bash
@@ -226,8 +224,9 @@ instead of restarting.
 
 ## Trained weights
 
-`best_yolov8n.pt` and `best_yolov8s.pt` are tracked with Git LFS (`git lfs pull` after
-cloning). `best_yolov8s.pt` is the current best model. They're also on the Modal volume:
+`best_yolov8n.pt` and `best_yolov8s.pt` are committed directly to the repo, so a plain
+clone gets them. `best_yolov8s.pt` is the current best model. They're also on the Modal
+volume:
 ```bash
 modal volume get sixray-data runs/sixray_yolov8s_obb/weights/best.pt ./best_yolov8s.pt
 ```

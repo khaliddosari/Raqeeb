@@ -13,6 +13,11 @@ from agent.routes import detection, openai_routes, twilio_routes, verification, 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.llm_provider.lower() == "openai" and not settings.openai_webhook_secret:
+        raise RuntimeError(
+            "LLM_PROVIDER=openai requires OPENAI_WEBHOOK_SECRET -- the SIP callback in "
+            "agent/routes/openai_routes.py cannot authenticate OpenAI without it."
+        )
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     init_db()
     yield

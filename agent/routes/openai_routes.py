@@ -42,6 +42,10 @@ def _verify_signature(body: bytes, headers: dict[str, str]) -> None:
         raise HTTPException(status_code=400, detail="Webhook timestamp outside tolerance")
 
     secret = settings.openai_webhook_secret
+    if not secret:
+        # Without this an unset secret would HMAC with an empty key, which any caller can
+        # reproduce -- i.e. every forged webhook would verify.
+        raise HTTPException(status_code=500, detail="Webhook secret is not configured")
     decoded_secret = base64.b64decode(secret[6:]) if secret.startswith("whsec_") else secret.encode()
     signed_payload = f"{webhook_id}.{timestamp}.{body.decode('utf-8')}"
     expected = base64.b64encode(hmac.new(decoded_secret, signed_payload.encode(), hashlib.sha256).digest()).decode()
