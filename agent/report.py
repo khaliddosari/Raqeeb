@@ -14,8 +14,21 @@ from agent.providers.base import LLMProvider
 from agent.schemas import IncidentReport
 
 
+# Checkpoint local time. Saudi Arabia is UTC+3 year round and has never observed DST,
+# so a fixed offset is exact here and avoids depending on the IANA database being
+# present, which Windows does not ship by default.
+RIYADH = datetime.timezone(datetime.timedelta(hours=3), "AST")
+
+
+def checkpoint_now() -> datetime.datetime:
+    """Local time at the checkpoint. Incident ids and report timestamps use this, so an
+    incident opened at 01:00 Riyadh is filed under that date rather than the previous
+    UTC one. Stored created_at/updated_at columns stay UTC."""
+    return datetime.datetime.now(RIYADH)
+
+
 def new_incident_id() -> str:
-    return f"INC-{datetime.datetime.now(datetime.timezone.utc):%Y%m%d}-{uuid.uuid4().hex[:6].upper()}"
+    return f"INC-{checkpoint_now():%Y%m%d}-{uuid.uuid4().hex[:6].upper()}"
 
 
 def missing_required_fields(incident_data: dict[str, Any]) -> list[str]:
@@ -41,7 +54,7 @@ async def generate_report(
 
     report_dict = {
         "incident_id": incident_id,
-        "date_time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "date_time": checkpoint_now().isoformat(),
         "location": incident_data["location"],
         "detected_item": detection_class,
         "yolo_confidence": detection_confidence,

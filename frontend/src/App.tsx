@@ -31,6 +31,14 @@ const TEAM = [
   { name: "Omar Al-Dhawyan", role: "Project", url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/" },
 ]
 
+const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Riyadh",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+})
+
 const PIPELINE = ["detected", "pending_verification", "verified", "report_sent", "call_in_progress", "closed"]
 
 function StatusDot({ tone }: { tone: "idle" | "active" | "done" | "alert" }) {
@@ -192,7 +200,7 @@ export default function App() {
           </div>
           <div className="ml-auto flex items-center gap-3 font-mono text-xs tabular-nums text-muted-foreground sm:gap-4">
             <span className="hidden md:inline">Main Terminal · Checkpoint 1</span>
-            <span>{clock.toISOString().slice(11, 19)} UTC</span>
+            <span>{RIYADH_TIME.format(clock)} AST</span>
           </div>
         </div>
       </header>
