@@ -67,7 +67,23 @@ Useful flags:
 | `--imgsz` | `1280` | inference size; see the resolution finding below before lowering it |
 | `--gt` | off | score against ground truth from `make_test_video.py` (see below) |
 | `--trail-len` | `20` | motion-trail length in frames; `--no-trails` turns it off |
+| `--fps` | source fps | motion-interpolate the finished clip to this rate, e.g. `60` |
 | `--show` | off | live preview window while processing |
+
+The clip is written as H.264, which is the only codec of the plausible options that a
+browser will play -- the dashboard embeds this file directly, and MPEG-4 Part 2 renders
+as a blank player in Chrome, Edge and Firefox.
+
+`--fps` is presentation only. Tracking has already finished by the time it runs, so the
+analysed frame count and every metric below are unchanged; it synthesises intermediate
+frames purely for smoother playback, keeping the original duration. The belt's motion is
+a near-rigid linear scroll, which is the easy case for motion compensation, so the
+overlays stay sharp. It needs ffmpeg (`uv sync` installs one) and takes longer than the
+tracking pass itself. The dashboard's demo clip is regenerated with:
+
+```bash
+python track_video.py test_clip.mp4 --fps 60 --output static/test_clip_tracked.mp4
+```
 
 `trackers/raqeeb_botsort.yaml` is BoT-SORT retuned for this footage — mainly turning off
 global motion compensation, which helps handheld video but actively hurts a fixed

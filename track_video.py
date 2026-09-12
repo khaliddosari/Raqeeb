@@ -16,6 +16,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
+import subprocess
 import time
 from collections import defaultdict, deque
 from pathlib import Path
@@ -56,6 +58,9 @@ def parse_args() -> argparse.Namespace:
                         "the training stills did, so thin objects need upscaling to survive (default: 1280)")
     p.add_argument("--device", default=None, help="cuda device e.g. 0, or cpu (default: auto)")
     p.add_argument("--output", default=None, help="output video path (default: <source>_tracked.mp4)")
+    p.add_argument("--fps", type=float, default=None,
+                   help="motion-interpolate the finished clip to this frame rate, e.g. 60. Keeps the "
+                        "same duration and the same analysed frames -- presentation only. Needs ffmpeg.")
     p.add_argument("--trail-len", type=int, default=20, help="motion-trail length in frames (default: 20)")
     p.add_argument("--no-trails", action="store_true", help="shorthand for --trail-len 0")
     p.add_argument(
@@ -78,6 +83,63 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--class-agnostic", action="store_true",
                    help="match GT to predictions ignoring class, to separate association errors from misclassification")
     return p.parse_args()
+
+
+def ffmpeg_exe() -> str:
+    try:
+        import imageio_ffmpeg
+    except ImportError:
+        exe = shutil.which("ffmpeg")
+        if exe:
+            return exe
+        raise SystemExit(
+            "--fps needs ffmpeg. Run `uv sync` (it installs imageio-ffmpeg) or put ffmpeg on PATH."
+        ) from None
+    return imageio_ffmpeg.get_ffmpeg_exe()
+
+
+def interpolate_fps(out_path: Path, target_fps: float, source_fps_: float) -> None:
+    """Synthesise intermediate frames up to target_fps, in place.
+
+    This is presentation only -- the tracking already ran, so the analysed frame count and
+    every metric derived from it are untouched; only playback smoothness changes. On belt
+    footage, where motion is a near-rigid linear scroll, motion compensation has an easy
+    job and the overlays stay sharp."""
+    if target_fps <= source_fps_:
+        print(f"warning: --fps {target_fps:g} is not above the source {source_fps_:g}, skipping.")
+        return
+
+    tmp = out_path.with_name(f"{out_path.stem}__interp{out_path.suffix}")
+    cmd = [
+        ffmpeg_exe(), "-y", "-v", "error", "-i", str(out_path),
+        "-vf", f"minterpolate=fps={target_fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(tmp),
+    ]
+    print(f"interpolating {source_fps_:g} -> {target_fps:g} fps (this is slower than the tracking pass)...")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        tmp.unlink(missing_ok=True)
+        raise SystemExit(f"ffmpeg interpolation failed:\n{result.stderr.strip()[:500]}")
+    tmp.replace(out_path)
+
+
+def open_writer(out_path: Path, fps: float, w: int, h: int) -> cv2.VideoWriter:
+    """Prefer H.264: it is the only one of these a browser will play, and the dashboard
+    embeds this file directly. mp4v (MPEG-4 Part 2) decodes in VLC but renders as a blank
+    player in Chrome, Edge and Firefox. OpenCV may log an openh264 load failure and still
+    succeed here, because it falls through to the FFmpeg build it ships with."""
+    for fourcc in ("avc1", "mp4v"):
+        writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
+        if writer.isOpened():
+            if fourcc != "avc1":
+                print(
+                    f"warning: no H.264 encoder available, wrote {fourcc} instead. The clip "
+                    "will not play in a browser; re-encode before using it on the dashboard."
+                )
+            return writer
+        writer.release()
+    raise SystemExit(f"could not open video writer for {out_path}")
 
 
 def source_fps(source: str, fallback: float = 30.0) -> float:
@@ -191,9 +253,7 @@ def main() -> None:
         h, w = frame.shape[:2]
 
         if writer is None and not args.no_save:
-            writer = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
-            if not writer.isOpened():
-                raise SystemExit(f"could not open video writer for {out_path}")
+            writer = open_writer(out_path, fps, w, h)
 
         is_obb = result.obb is not None
         det = result.obb if is_obb else result.boxes
@@ -253,6 +313,9 @@ def main() -> None:
         writer.release()
     if args.show:
         cv2.destroyAllWindows()
+
+    if args.fps and writer is not None:
+        interpolate_fps(out_path, args.fps, fps)
 
     rows = report(tracks, args, frame_idx, time.perf_counter() - t0, fps,
                   out_path if writer is not None else None)
