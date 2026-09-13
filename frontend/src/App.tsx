@@ -1,11 +1,10 @@
+import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { Pause as PauseIcon, Play as PlayIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { SectionShell } from "@/components/SectionShell"
-import { toPlainText } from "@/lib/plaintext"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -13,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   detect,
   getIncident,
@@ -23,12 +23,15 @@ import {
   type Incident,
   type MonitorEvent,
 } from "@/lib/api"
+import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
+import { toPlainText } from "@/lib/plaintext"
 
+// Names stay in the spelling each person uses on LinkedIn, in both languages.
 const TEAM = [
-  { name: "Khalid Al-Dosari", role: "Detection model, tracking benchmark", url: "https://www.linkedin.com/in/khalid-al-dosari/" },
-  { name: "Nawaf Alsharani", role: "Report generation", url: "https://www.linkedin.com/in/nawaf-alsharani-a431b731a/" },
-  { name: "Yazeed Bin Shihah", role: "Voice agent, telephony, dashboard", url: "https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/" },
-  { name: "Omar Al-Dhawyan", role: "Project", url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/" },
+  { name: "Khalid Al-Dosari", url: "https://www.linkedin.com/in/khalid-al-dosari/" },
+  { name: "Nawaf Alsharani", url: "https://www.linkedin.com/in/nawaf-alsharani-a431b731a/" },
+  { name: "Yazeed Bin Shihah", url: "https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/" },
+  { name: "Omar Al-Dhawyan", url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/" },
 ]
 
 const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
@@ -63,22 +66,43 @@ function StatusDot({ tone }: { tone: "idle" | "active" | "done" | "alert" }) {
 function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
     <TableRow className="border-border/50">
-      <TableCell className="py-2 align-top text-xs uppercase tracking-wide text-muted-foreground sm:w-44">
+      <TableCell className="py-1.5 align-top text-xs uppercase tracking-wide text-muted-foreground sm:w-36">
         {label}
       </TableCell>
-      <TableCell className={`py-2 text-sm wrap-break-word ${mono ? "font-mono tabular-nums" : ""}`}>
+      <TableCell className={`py-1.5 text-sm wrap-break-word ${mono ? "font-mono tabular-nums" : ""}`}>
         {value ?? "—"}
       </TableCell>
     </TableRow>
   )
 }
 
+// Sentences with values spliced in come from the dictionary as [text, value, text, value, text].
+// Values are bdi-isolated so an English authority name inside an Arabic sentence keeps its order.
+function Emphasised({ parts }: { parts: string[] }) {
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 ? (
+          <strong key={i}>
+            <bdi>{part}</bdi>
+          </strong>
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </>
+  )
+}
+
 export default function App() {
+  const [lang, setLang] = useState<Lang>(initialLang)
+  const t = STRINGS[lang]
   const [employeeName, setEmployeeName] = useState("Khalid Al-Dosari")
   const [employeeId, setEmployeeId] = useState("EMP-4471")
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [annotated, setAnnotated] = useState<string | null>(null)
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null)
   const [incident, setIncident] = useState<Incident | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -93,8 +117,14 @@ export default function App() {
   const [suspectNotes, setSuspectNotes] = useState(SUSPECT_DEFAULTS.notes)
 
   useEffect(() => {
-    const t = setInterval(() => setClock(new Date()), 1000)
-    return () => clearInterval(t)
+    applyDocumentLang(lang)
+    document.title = t.docTitle
+    rememberLang(lang)
+  }, [lang, t])
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(new Date()), 1000)
+    return () => clearInterval(timer)
   }, [])
 
   const toggleVideo = useCallback(() => {
@@ -143,7 +173,7 @@ export default function App() {
 
   const runDetection = async () => {
     if (!file) return
-    setBusy("Running detection")
+    setBusy("detect")
     setError(null)
     setFeed([])
     setSuspectName(SUSPECT_DEFAULTS.name)
@@ -161,7 +191,7 @@ export default function App() {
   }
 
   const runTestImage = async () => {
-    setBusy("Running detection")
+    setBusy("detect")
     setError(null)
     setFeed([])
     setSuspectName(SUSPECT_DEFAULTS.name)
@@ -210,516 +240,553 @@ export default function App() {
 
   const dispatch = incident?.authority_response
   const report = incident?.report
+  const confidencePct = ((incident?.detection_confidence ?? 0) * 100).toFixed(2)
 
   return (
-    <div className="min-h-screen text-foreground">
-      <header className="sticky top-0 z-20 border-b border-white/40 bg-background/55 backdrop-blur-xl backdrop-saturate-150">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:gap-x-6">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground text-xs font-bold shadow-sm ring-1 ring-white/20">
-              R
-            </div>
-            <span className="font-semibold tracking-tight">Raqeeb</span>
-            <Badge variant="outline" className="ml-1 hidden font-mono text-xs uppercase sm:inline-flex">
-              Border control
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <StatusDot tone={live ? "done" : "idle"} />
-            <span className="hidden sm:inline">{live ? "Monitor link active" : "Monitor idle"}</span>
-            <span className="sm:hidden">{live ? "Live" : "Idle"}</span>
-          </div>
-          <div className="ml-auto flex items-center gap-3 font-mono text-xs tabular-nums text-muted-foreground sm:gap-4">
-            <span className="hidden md:inline">Main Terminal · Checkpoint 1</span>
-            <span>{RIYADH_TIME.format(clock)} AST</span>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-6 sm:gap-12 sm:py-8">
-        {error && (
-          <Alert variant="destructive">
-            <AlertDescription className="font-mono text-xs break-all">{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* 01 PREVIEW */}
-        <SectionShell
-          index={1}
-          id="preview"
-          title="Detection preview"
-          caption="The trained detector tracking prohibited items across a belt clip, frame by frame."
-          status={{ label: "Live loop", tone: "active" }}
-        >
-          <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-            <Card className="overflow-hidden py-0">
-              {/* h-full so the video fills the card, which the grid stretches to match
-                  the taller column beside it. object-cover then crops rather than
-                  letterboxing. Below lg the card is not stretched, so the aspect box
-                  keeps the video from collapsing. */}
-              <div className="relative h-full">
-                <video
-                  ref={videoRef}
-                  src={`${import.meta.env.BASE_URL}test_clip_tracked.mp4`}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  onPlay={() => setPlaying(true)}
-                  onPause={() => setPlaying(false)}
-                  onClick={toggleVideo}
-                  className="aspect-960/580 block w-full cursor-pointer bg-black object-cover lg:aspect-auto lg:h-full"
-                />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="secondary"
-                  onClick={toggleVideo}
-                  aria-label={playing ? "Pause preview" : "Play preview"}
-                  className="absolute bottom-4 left-4 size-12 rounded-full opacity-90 shadow-sm transition hover:opacity-100 focus-visible:opacity-100"
-                >
-                  {playing ? <PauseIcon className="size-5" /> : <PlayIcon className="size-5" />}
-                </Button>
+    <DirectionProvider direction={lang === "ar" ? "rtl" : "ltr"}>
+      <div className="min-h-screen text-foreground desk:flex desk:h-dvh desk:flex-col desk:overflow-hidden">
+        <header className="sticky top-0 z-20 border-b border-white/40 bg-background/55 backdrop-blur-xl backdrop-saturate-150 desk:static desk:shrink-0">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 desk:h-12 desk:max-w-[112rem] desk:flex-nowrap desk:py-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm ring-1 ring-white/20">
+                {t.brandMark}
               </div>
-            </Card>
-            <div className="flex flex-col gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">What this is</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  A YOLOv8-OBB model flags prohibited items in X-ray baggage scans, an employee physically
-                  verifies the find, and a voice agent then collects the details, writes the report, routes it to
-                  the responsible authority and phones them to request dispatch.
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Team</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                  {TEAM.map((m) => (
-                    <a
-                      key={m.url}
-                      href={m.url}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="group flex flex-col rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-accent"
-                    >
-                      <span className="text-sm font-medium group-hover:underline">{m.name}</span>
-                      <span className="text-xs text-muted-foreground">{m.role}</span>
-                    </a>
-                  ))}
-                </CardContent>
-              </Card>
+              <span className="font-semibold tracking-tight">{t.brand}</span>
+            </div>
+
+            {/* its own full-width row under the brand until there is room to sit inline */}
+            <nav
+              aria-label={t.team}
+              className="order-last flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-1 lg:order-0 lg:w-auto lg:flex-1"
+            >
+              {TEAM.map((m) => (
+                <a
+                  key={m.url}
+                  href={m.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={t.onLinkedIn(m.name)}
+                  dir="ltr"
+                  className="text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                >
+                  {m.name}
+                </a>
+              ))}
+            </nav>
+
+            <div className="ms-auto flex items-center gap-3 lg:ms-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setLang(t.switchToLang)}
+                aria-label={t.switchToLabel}
+                className="h-10 bg-white/50 px-3 lg:h-7"
+              >
+                <span lang={t.switchToLang}>{t.switchTo}</span>
+              </Button>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="font-mono tabular-nums">{RIYADH_TIME.format(clock)}</span>
+                <span>{t.timeZone}</span>
+              </span>
             </div>
           </div>
-        </SectionShell>
+        </header>
 
-        {/* 02 INFERENCE */}
-        <SectionShell
-          index={2}
-          id="inference"
-          title="Inference"
-          caption="Upload any X-ray frame. The model returns an annotated render and the flagged class, which starts an incident."
-          status={
-            incident
-              ? { label: incident.detection_class ?? "detected", tone: "done" }
-              : { label: "awaiting frame", tone: "idle" }
-          }
-        >
-          <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
-            <Card>
-              <CardContent className="flex flex-col gap-4 pt-6">
-                <div className="grid gap-2">
-                  <Label htmlFor="emp-name">Employee</Label>
-                  <Input id="emp-name" value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="emp-id">Employee ID</Label>
-                  <Input id="emp-id" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="frame">Frame image</Label>
-                  <Input id="frame" type="file" accept="image/*" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
-                </div>
-                <Button onClick={runDetection} disabled={!file || busy !== null} className="w-full">
-                  {busy === "Running detection" ? "Running detection…" : "Run detection"}
-                </Button>
+        {/* Below the desk breakpoint this is a scrolling column of panels. At desk it locks to the
+            viewport: the live preview and the inference workspace share the top row, and the three
+            downstream stages sit along the bottom in pipeline order. In Arabic the grid mirrors. */}
+        <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-6 sm:py-8 desk:grid desk:min-h-0 desk:max-w-[112rem] desk:flex-1 desk:grid-cols-3 desk:grid-rows-[minmax(0,1.35fr)_minmax(0,1fr)] desk:gap-3 desk:py-3">
+          {error && (
+            <Alert
+              variant="destructive"
+              onClick={() => setError(null)}
+              title={t.dismiss}
+              className="cursor-pointer text-start desk:fixed desk:top-14 desk:left-1/2 desk:z-30 desk:w-[min(40rem,calc(100vw-2rem))] desk:-translate-x-1/2 desk:bg-white/95 desk:shadow-lg desk:backdrop-blur-xl"
+            >
+              <AlertDescription dir="ltr" className="font-mono text-xs break-all">
+                {error}
+              </AlertDescription>
+            </Alert>
+          )}
 
-                <div className="flex flex-col gap-2 rounded-xl border border-white/50 bg-white/40 p-3 backdrop-blur-sm">
-                  <Button
-                    variant="secondary"
-                    onClick={runTestImage}
-                    disabled={busy !== null}
-                    className="w-full"
-                  >
-                    {busy === "Running detection" ? "Running…" : "Run test image"}
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={runTestImage}
-                    disabled={busy !== null}
-                    className="overflow-hidden rounded-lg border border-white/60 disabled:cursor-not-allowed"
-                    aria-label="Run detection on the bundled test image"
-                  >
-                    <img
-                      src={TEST_IMAGE_URL}
-                      alt="Bundled X-ray test frame"
-                      className="block w-full cursor-pointer bg-white transition hover:opacity-90"
+          {/* 01 PREVIEW */}
+          <SectionShell
+            index={1}
+            id="preview"
+            title={t.preview.title}
+            caption={t.preview.caption}
+            status={{ label: t.preview.status, tone: "active" }}
+            className="desk:col-start-1 desk:row-start-1"
+          >
+            <div className="relative overflow-hidden rounded-xl bg-black desk:min-h-0 desk:flex-1">
+              <video
+                ref={videoRef}
+                src={`${import.meta.env.BASE_URL}test_clip_tracked.mp4`}
+                autoPlay
+                loop
+                muted
+                playsInline
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onClick={toggleVideo}
+                className="block aspect-960/580 w-full cursor-pointer object-cover desk:aspect-auto desk:h-full"
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="secondary"
+                onClick={toggleVideo}
+                aria-label={playing ? t.preview.pause : t.preview.play}
+                className="absolute inset-s-4 bottom-4 size-12 rounded-full opacity-90 shadow-sm transition hover:opacity-100 focus-visible:opacity-100 desk:inset-s-3 desk:bottom-3 desk:size-10"
+              >
+                {playing ? <PauseIcon className="size-5" /> : <PlayIcon className="size-5" />}
+              </Button>
+            </div>
+            <p className="shrink-0 text-xs leading-relaxed text-muted-foreground">{t.preview.description}</p>
+          </SectionShell>
+
+          {/* 02 INFERENCE */}
+          <SectionShell
+            index={2}
+            id="inference"
+            title={t.inference.title}
+            caption={t.inference.caption}
+            status={
+              incident
+                ? { label: t.detectionClass(incident.detection_class ?? ""), tone: "done" }
+                : { label: t.inference.awaiting, tone: "idle" }
+            }
+            className="desk:col-span-2 desk:col-start-2 desk:row-start-1"
+          >
+            <div className="grid gap-3 md:grid-cols-2 desk:min-h-0 desk:flex-1 desk:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)_minmax(0,1fr)] desk:grid-rows-[minmax(0,1fr)]">
+              {/* input */}
+              <ScrollArea className="desk:h-full desk:min-h-0">
+                <div className="flex flex-col gap-3 desk:p-1 desk:pe-3 desk-short:gap-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="emp-name">{t.inference.employee}</Label>
+                    <Input id="emp-name" value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="emp-id">{t.inference.employeeId}</Label>
+                    <Input id="emp-id" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="frame">{t.inference.frame}</Label>
+                    {/* The native picker's "Choose File / No file chosen" is browser chrome that follows the
+                        OS language, not the page. The real input stays for keyboard and screen readers;
+                        this label is only its visible, translated face. */}
+                    <input
+                      id="frame"
+                      type="file"
+                      accept="image/*"
+                      aria-describedby="frame-status"
+                      className="peer sr-only"
+                      onChange={(e) => onFile(e.target.files?.[0] ?? null)}
                     />
-                  </button>
-                  <p className="text-xs text-muted-foreground">
-                    A bundled X-ray frame, for trying the pipeline without finding an image.
-                  </p>
-                </div>
-
-                {incident && (
-                  <p className="font-mono text-xs text-muted-foreground wrap-break-word">{incident.id}</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="overflow-hidden">
-              <CardHeader>
-                <CardTitle className="text-sm">{annotated ? "Annotated output" : "Input"}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {busy === "Running detection" ? (
-                  <Skeleton className="aspect-video w-full" />
-                ) : annotated ? (
-                  <img src={annotated} alt="Annotated detection" className="w-full rounded-md border border-border/60" />
-                ) : previewUrl ? (
-                  <img src={previewUrl} alt="Selected frame" className="w-full rounded-md border border-border/60 opacity-70" />
-                ) : (
-                  <div className="grid aspect-video place-items-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
-                    No frame selected
+                    <label
+                      htmlFor="frame"
+                      aria-hidden="true"
+                      className="flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border border-input ps-1 pe-2.5 text-sm transition-colors hover:bg-white/40 peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50"
+                    >
+                      <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                        {t.inference.chooseFile}
+                      </span>
+                      <span id="frame-status" dir="auto" className="truncate text-muted-foreground">
+                        {file ? file.name : t.inference.noFile}
+                      </span>
+                    </label>
                   </div>
-                )}
-                {incident?.detection_class && (
-                  <div className="mt-4 flex items-center gap-3">
-                    <Badge className="font-mono text-xs uppercase">{incident.detection_class}</Badge>
-                    <span className="font-mono text-sm tabular-nums text-muted-foreground">
-                      {((incident.detection_confidence ?? 0) * 100).toFixed(2)}% confidence
-                    </span>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  <Button onClick={runDetection} disabled={!file || busy !== null} className="w-full">
+                    {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
+                  </Button>
 
-          {incident && stageIndex >= 0 && (
-            <Card className="mt-6">
-              <CardContent className="flex flex-col gap-4 pt-6">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Pipeline</span>
-                  <span className="font-mono text-xs uppercase text-muted-foreground">{incident.status}</span>
+                  {/* stacked with the image below on small screens; a thumbnail beside the button at desk */}
+                  <div className="flex flex-col gap-2 rounded-xl bg-white/40 p-2.5 ring-1 ring-white/60 desk:flex-row-reverse desk:items-center">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <Button variant="secondary" onClick={runTestImage} disabled={busy !== null} className="w-full">
+                        {busy === "detect" ? t.inference.runningTest : t.inference.runTest}
+                      </Button>
+                      <p className="text-xs text-muted-foreground desk:hidden">{t.inference.testCaption}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={runTestImage}
+                      disabled={busy !== null}
+                      aria-label={t.inference.testAria}
+                      className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/60 disabled:cursor-not-allowed desk:w-24 desk-short:w-20"
+                    >
+                      <img
+                        src={TEST_IMAGE_URL}
+                        alt={t.inference.testAlt}
+                        className="block w-full cursor-pointer bg-white object-cover transition hover:opacity-90 desk:aspect-3/2"
+                      />
+                    </button>
+                  </div>
                 </div>
-                <Progress value={((stageIndex + 1) / PIPELINE.length) * 100} />
-                <div className="flex flex-wrap gap-2">
-                  {incident.status === "pending_verification" && (
+              </ScrollArea>
+
+              {/* output */}
+              <div className="flex min-h-0 flex-col overflow-hidden rounded-xl bg-white/40 ring-1 ring-white/60 desk:h-full">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/50 px-3 py-2 text-xs">
+                  <span className="font-medium">{annotated ? t.inference.annotatedOutput : t.inference.input}</span>
+                  {incident && <span className="truncate font-mono text-muted-foreground">{incident.id}</span>}
+                </div>
+                {/* at desk the image is positioned into this box so object-contain can fit it to any height */}
+                <div className="relative flex min-h-56 flex-1 items-center justify-center p-2 desk:min-h-0">
+                  {busy === "detect" ? (
+                    <Skeleton className="h-52 w-full desk:absolute desk:inset-2 desk:h-auto desk:w-auto" />
+                  ) : annotated ? (
                     <>
-                      <Button size="sm" className="h-11 flex-1 sm:h-8 sm:flex-none" onClick={() => act("verify", () => verify(incident.id, true))} disabled={busy !== null}>
-                        Confirm threat
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="h-11 flex-1 sm:h-8 sm:flex-none"
-                        variant="outline"
-                        onClick={() => act("verify", () => verify(incident.id, false))}
-                        disabled={busy !== null}
-                      >
-                        False positive
-                      </Button>
+                      {loadedSrc !== annotated && <Skeleton className="absolute inset-2" />}
+                      <img
+                        src={annotated}
+                        alt={t.inference.annotatedAlt}
+                        onLoad={() => setLoadedSrc(annotated)}
+                        className={`block w-full rounded-md object-contain transition-opacity duration-300 desk:absolute desk:inset-2 desk:size-[calc(100%-1rem)] ${
+                          loadedSrc === annotated ? "opacity-100" : "opacity-0"
+                        }`}
+                      />
                     </>
+                  ) : previewUrl ? (
+                    <img
+                      src={previewUrl}
+                      alt={t.inference.selectedAlt}
+                      className="block w-full rounded-md object-contain opacity-70 desk:absolute desk:inset-2 desk:size-[calc(100%-1rem)]"
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t.inference.noFrame}</p>
                   )}
                 </div>
-
-                {incident.status === "verified" && (
-                  <form
-                    className="flex flex-col gap-4 rounded-xl border border-white/50 bg-white/40 p-4 backdrop-blur-sm"
-                    onSubmit={(e) => {
-                      e.preventDefault()
-                      void act("info", () =>
-                        submitInfo(incident.id, suspectName.trim(), suspectId.trim(), suspectNotes.trim() || undefined),
-                      )
-                    }}
-                  >
-                    <div>
-                      <p className="text-sm font-medium">Suspect details</p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        Typed alternative to collecting these by voice. Both fields are required before a
-                        report can be generated.
-                      </p>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="grid gap-2">
-                        <Label htmlFor="suspect-name">Full name</Label>
-                        <Input
-                          id="suspect-name"
-                          value={suspectName}
-                          onChange={(e) => setSuspectName(e.target.value)}
-                          placeholder="e.g. Faisal Al-Harbi"
-                          autoComplete="off"
-                        />
-                      </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="suspect-id">ID number</Label>
-                        <Input
-                          id="suspect-id"
-                          value={suspectId}
-                          onChange={(e) => setSuspectId(e.target.value)}
-                          placeholder="e.g. 1093847562"
-                          inputMode="numeric"
-                          autoComplete="off"
-                          className="font-mono"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="suspect-notes">Inspection notes (optional)</Label>
-                      <Input
-                        id="suspect-notes"
-                        value={suspectNotes}
-                        onChange={(e) => setSuspectNotes(e.target.value)}
-                        placeholder="e.g. Cooperative, detained at checkpoint"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <Button
-                      type="submit"
-                      className="h-11 w-full sm:h-9 sm:w-auto sm:self-start"
-                      disabled={busy !== null || !suspectName.trim() || !suspectId.trim()}
-                    >
-                      {busy === "info" ? "Generating report…" : "Submit suspect details"}
-                    </Button>
-                  </form>
+                {incident?.detection_class && (
+                  <div className="flex shrink-0 items-center gap-3 border-t border-white/50 px-3 py-2">
+                    <Badge className="font-mono text-xs uppercase">{t.detectionClass(incident.detection_class)}</Badge>
+                    <span className="text-xs tabular-nums text-muted-foreground">{t.inference.confidence(confidencePct)}</span>
+                  </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
-        </SectionShell>
+              </div>
 
-        {/* 03 REPORT */}
-        <SectionShell
-          index={3}
-          id="report"
-          title="Incident report"
-          caption="Generated from the verified detection, then routed to the responsible authority."
-          status={report ? { label: "generated", tone: "done" } : { label: "pending", tone: "idle" }}
-        >
-          {report ? (
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Structured record</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableBody>
-                      <Field label="Incident" value={report.incident_id} mono />
-                      <Field label="Detected item" value={report.detected_item} />
-                      <Field label="Confidence" value={report.yolo_confidence} mono />
-                      <Field label="Location" value={report.location} />
-                      <Field label="Severity" value={<Badge variant="outline" className="text-xs uppercase">{report.severity}</Badge>} />
-                      <Field label="Suspect" value={report.suspect?.name} />
-                      <Field label="Suspect ID" value={report.suspect?.id_number} mono />
-                      <Field label="Employee" value={`${report.employee?.name} · ${report.employee?.id}`} />
-                      <Field label="Notes" value={report.inspection_notes} />
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Narrative summary</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-72 pr-4">
-                    <p
-                      dir="auto"
-                      className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground"
+              {/* verification */}
+              <ScrollArea className="md:col-span-2 desk:col-span-1 desk:h-full desk:min-h-0">
+                <div className="flex flex-col gap-3 desk:p-1 desk:pe-3">
+                  <div className="flex flex-col gap-2 rounded-xl bg-white/40 p-3 ring-1 ring-white/60">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium">{t.inference.pipeline}</span>
+                      <span className="truncate font-mono uppercase text-muted-foreground">
+                        {t.status(incident?.status ?? "idle")}
+                      </span>
+                    </div>
+                    <Progress value={stageIndex >= 0 ? ((stageIndex + 1) / PIPELINE.length) * 100 : 0} />
+                    {!incident && <p className="text-xs text-muted-foreground">{t.inference.openIncident}</p>}
+                    {incident?.status === "pending_verification" && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          className="h-11 flex-1 sm:h-8"
+                          onClick={() => act("verify", () => verify(incident.id, true))}
+                          disabled={busy !== null}
+                        >
+                          {t.inference.confirm}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-11 flex-1 sm:h-8"
+                          onClick={() => act("verify", () => verify(incident.id, false))}
+                          disabled={busy !== null}
+                        >
+                          {t.inference.falsePositive}
+                        </Button>
+                      </div>
+                    )}
+                    {incident?.status === "false_positive" && (
+                      <p className="text-xs text-muted-foreground">{t.inference.falsePositiveClosed}</p>
+                    )}
+                    {incident && !["pending_verification", "verified", "false_positive"].includes(incident.status) && (
+                      <p className="text-xs text-muted-foreground">{t.inference.submitted}</p>
+                    )}
+                  </div>
+
+                  {incident?.status === "verified" && (
+                    <form
+                      className="flex flex-col gap-3 rounded-xl bg-white/40 p-3 ring-1 ring-white/60"
+                      onSubmit={(e) => {
+                        e.preventDefault()
+                        void act("info", () =>
+                          submitInfo(incident.id, suspectName.trim(), suspectId.trim(), suspectNotes.trim() || undefined),
+                        )
+                      }}
                     >
+                      <div>
+                        <p className="text-sm font-medium">{t.inference.suspectDetails}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{t.inference.suspectHelp}</p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 desk:grid-cols-1">
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="suspect-name">{t.inference.fullName}</Label>
+                          <Input
+                            id="suspect-name"
+                            value={suspectName}
+                            onChange={(e) => setSuspectName(e.target.value)}
+                            placeholder={t.inference.fullNamePlaceholder}
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="suspect-id">{t.inference.idNumber}</Label>
+                          <Input
+                            id="suspect-id"
+                            value={suspectId}
+                            onChange={(e) => setSuspectId(e.target.value)}
+                            placeholder={t.inference.idNumberPlaceholder}
+                            inputMode="numeric"
+                            autoComplete="off"
+                            dir="ltr"
+                            className="font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="suspect-notes">{t.inference.notes}</Label>
+                        <Input
+                          id="suspect-notes"
+                          value={suspectNotes}
+                          onChange={(e) => setSuspectNotes(e.target.value)}
+                          placeholder={t.inference.notesPlaceholder}
+                          autoComplete="off"
+                          dir="auto"
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        className="h-11 w-full sm:h-9"
+                        disabled={busy !== null || !suspectName.trim() || !suspectId.trim()}
+                      >
+                        {busy === "info" ? t.inference.generating : t.inference.submit}
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </SectionShell>
+
+          {/* 03 REPORT */}
+          <SectionShell
+            index={3}
+            id="report"
+            title={t.report.title}
+            caption={t.report.caption}
+            status={report ? { label: t.report.generated, tone: "done" } : { label: t.report.pending, tone: "idle" }}
+            className="desk:col-start-1 desk:row-start-2"
+          >
+            {report ? (
+              <Tabs defaultValue="record" className="min-h-0 gap-2 desk:flex-1">
+                <TabsList className="h-11! shrink-0 desk:h-8!">
+                  <TabsTrigger value="record">{t.report.record}</TabsTrigger>
+                  <TabsTrigger value="narrative">{t.report.narrative}</TabsTrigger>
+                </TabsList>
+                <TabsContent value="record" className="min-h-0">
+                  <ScrollArea className="desk:h-full">
+                    <Table>
+                      <TableBody>
+                        <Field label={t.report.incident} value={report.incident_id} mono />
+                        <Field label={t.report.detectedItem} value={t.detectionClass(report.detected_item)} />
+                        <Field label={t.report.confidence} value={report.yolo_confidence} mono />
+                        <Field label={t.report.location} value={<bdi>{report.location}</bdi>} />
+                        <Field
+                          label={t.report.severity}
+                          value={
+                            <Badge variant="outline" className="text-xs uppercase">
+                              {t.severity(report.severity)}
+                            </Badge>
+                          }
+                        />
+                        <Field label={t.report.suspect} value={<bdi>{report.suspect?.name}</bdi>} />
+                        <Field label={t.report.suspectId} value={report.suspect?.id_number} mono />
+                        <Field label={t.report.employee} value={<bdi>{`${report.employee?.name} · ${report.employee?.id}`}</bdi>} />
+                        <Field label={t.report.notes} value={<bdi>{report.inspection_notes}</bdi>} />
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </TabsContent>
+                <TabsContent value="narrative" className="min-h-0">
+                  <ScrollArea className="h-72 desk:h-full">
+                    <p dir="auto" className="whitespace-pre-wrap pe-3 text-sm leading-relaxed text-muted-foreground">
                       {toPlainText(incident?.report_summary)}
                     </p>
                   </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                No report yet. Run a detection and confirm it to generate one.
-              </CardContent>
-            </Card>
-          )}
-        </SectionShell>
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <div className="grid flex-1 place-items-center py-10 text-center text-sm text-muted-foreground desk:py-0">
+                {t.report.empty}
+              </div>
+            )}
+          </SectionShell>
 
-        {/* 04 LIVE CALL */}
-        <SectionShell
-          index={4}
-          id="call"
-          title="Authority call monitor"
-          caption="The outbound call to the responsible authority, streamed turn by turn as it happens."
-          status={
-            incident?.call_sid
-              ? incident.status === "closed"
-                ? { label: "ended", tone: "done" }
-                : { label: "in progress", tone: "active" }
-              : { label: "no call", tone: "idle" }
-          }
-        >
-          <div className="grid gap-6 lg:grid-cols-[1fr_1.4fr]">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Channel</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableBody>
-                    <Field label="Authority" value={incident?.authority_name} />
-                    <Field label="Number" value={incident?.authority_phone} mono />
-                    <Field label="Call SID" value={incident?.call_sid} mono />
-                    <Field
-                      label="Monitor"
-                      value={
-                        <span className="flex items-center gap-2">
-                          <StatusDot tone={live ? "done" : "idle"} />
-                          {live ? "connected" : "disconnected"}
+          {/* 04 LIVE CALL */}
+          <SectionShell
+            index={4}
+            id="call"
+            title={t.call.title}
+            caption={t.call.caption}
+            status={
+              incident?.call_sid
+                ? incident.status === "closed"
+                  ? { label: t.call.ended, tone: "done" }
+                  : { label: t.call.inProgress, tone: "active" }
+                : { label: t.call.noCall, tone: "idle" }
+            }
+            className="desk:col-start-2 desk:row-start-2"
+          >
+            <dl className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-white/40 p-3 ring-1 ring-white/60">
+              <div className="col-span-2 min-w-0">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.authority}</dt>
+                <dd className="truncate text-sm" title={incident?.authority_name ?? undefined}>
+                  <bdi>{incident?.authority_name ?? "—"}</bdi>
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.number}</dt>
+                <dd dir="ltr" className="truncate text-start font-mono text-sm tabular-nums">
+                  {incident?.authority_phone ?? "—"}
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.callSid}</dt>
+                <dd className="truncate font-mono text-sm" title={incident?.call_sid ?? undefined}>
+                  {incident?.call_sid ?? "—"}
+                </dd>
+              </div>
+            </dl>
+            <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
+              <div className="flex shrink-0 items-center justify-between gap-2 text-xs">
+                <span className="font-medium">{t.call.transcript}</span>
+                <span className="flex items-center gap-1.5 text-muted-foreground">
+                  <StatusDot tone={live ? "done" : "idle"} />
+                  {live ? t.call.connected : t.call.disconnected}
+                </span>
+              </div>
+              <ScrollArea className="h-56 desk:h-auto desk:min-h-0 desk:flex-1">
+                {transcript.length ? (
+                  <div className="flex flex-col gap-3 pe-3">
+                    {transcript.map((line, i) => (
+                      <div key={i} className="flex flex-col gap-1">
+                        <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
+                          {t.call.role(line.role)}
                         </span>
-                      }
-                    />
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+                        <p dir="auto" className="text-sm leading-relaxed">
+                          {line.text}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-8 text-center text-sm text-muted-foreground">{t.call.empty}</p>
+                )}
+              </ScrollArea>
+            </div>
+          </SectionShell>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Transcript</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-72 pr-4">
-                  {transcript.length ? (
-                    <div className="flex flex-col gap-3">
-                      {transcript.map((line, i) => (
-                        <div key={i} className="flex flex-col gap-1">
-                          <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
-                            {line.role}
-                          </span>
-                          <p className="text-sm leading-relaxed">{line.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="py-10 text-center text-sm text-muted-foreground">
-                      No transcript. Turns appear here once a live call is running; mock telephony places no call.
+          {/* 05 JUDGMENT */}
+          <SectionShell
+            index={5}
+            id="judgment"
+            title={t.judgment.title}
+            caption={t.judgment.caption}
+            status={
+              dispatch?.dispatch_confirmed
+                ? { label: t.judgment.dispatchConfirmedPill, tone: "done" }
+                : incident
+                  ? { label: t.judgment.awaitingDecision, tone: "active" }
+                  : { label: t.judgment.pending, tone: "idle" }
+            }
+            className="desk:col-start-3 desk:row-start-2"
+          >
+            <div className="flex shrink-0 flex-col gap-1.5 rounded-xl bg-white/40 p-3 ring-1 ring-white/60">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.decision}</p>
+              {dispatch ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <StatusDot tone={dispatch.dispatch_confirmed ? "done" : "alert"} />
+                    <span className="text-sm font-medium">
+                      {dispatch.dispatch_confirmed ? t.judgment.dispatchConfirmed : t.judgment.dispatchNotConfirmed}
+                    </span>
+                  </div>
+                  {dispatch.authority_statement && (
+                    <p dir="auto" className="text-sm leading-relaxed">
+                      “{dispatch.authority_statement}”
                     </p>
                   )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </div>
-        </SectionShell>
-
-        {/* 05 JUDGMENT */}
-        <SectionShell
-          index={5}
-          id="judgment"
-          title="Judgment"
-          caption="Why the system acted as it did, and what the authority decided."
-          status={
-            dispatch?.dispatch_confirmed
-              ? { label: "dispatch confirmed", tone: "done" }
-              : incident
-                ? { label: "awaiting decision", tone: "active" }
-                : { label: "pending", tone: "idle" }
-          }
-        >
-          <div className="grid gap-6 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">System reasoning</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4 text-sm">
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">{t.judgment.noDecision}</p>
+              )}
+            </div>
+            <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
+              <p className="shrink-0 text-xs font-medium">{t.judgment.reasoning}</p>
+              <ScrollArea className="desk:min-h-0 desk:flex-1">
                 {incident ? (
-                  <>
+                  <div className="flex flex-col gap-2.5 pe-3 text-sm">
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Detection</p>
-                      <p className="mt-1">
-                        Flagged <strong>{incident.detection_class}</strong> at{" "}
-                        <span className="font-mono tabular-nums">
-                          {((incident.detection_confidence ?? 0) * 100).toFixed(2)}%
-                        </span>
-                        , above the configured threshold.
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.detection}</p>
+                      <p className="mt-0.5">
+                        <Emphasised
+                          parts={t.judgment.detectionBody(
+                            t.detectionClass(incident.detection_class ?? ""),
+                            `${confidencePct}%`,
+                          )}
+                        />
                       </p>
                     </div>
                     <Separator />
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Verification</p>
-                      <p className="mt-1">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.verification}</p>
+                      <p className="mt-0.5">
                         {incident.verification_status === "confirmed"
-                          ? `Physically confirmed by ${incident.employee_name ?? "the employee"}. The model never overrides this.`
-                          : "Not yet confirmed by an employee."}
+                          ? t.judgment.verifiedBy(incident.employee_name ?? t.judgment.theEmployee)
+                          : t.judgment.notVerified}
                       </p>
                     </div>
                     <Separator />
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Routing</p>
-                      <p className="mt-1">
-                        Severity <strong>{report?.severity ?? "—"}</strong> for this class, routed to{" "}
-                        <strong>{incident.authority_name ?? "—"}</strong> per the class-to-authority mapping.
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.routing}</p>
+                      <p className="mt-0.5">
+                        <Emphasised
+                          parts={t.judgment.routingBody(
+                            report?.severity ? t.severity(report.severity) : "—",
+                            incident.authority_name ?? "—",
+                          )}
+                        />
                       </p>
                     </div>
                     {report?.recommended_action && (
                       <>
                         <Separator />
                         <div>
-                          <p className="text-xs uppercase tracking-wide text-muted-foreground">Recommended action</p>
-                          <p dir="auto" className="mt-1 leading-relaxed">{toPlainText(report.recommended_action)}</p>
+                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                            {t.judgment.recommendedAction}
+                          </p>
+                          <p dir="auto" className="mt-0.5 leading-relaxed">
+                            {toPlainText(report.recommended_action)}
+                          </p>
                         </div>
                       </>
                     )}
-                  </>
-                ) : (
-                  <p className="py-10 text-center text-muted-foreground">Nothing to explain yet.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Authority decision</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {dispatch ? (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
-                      <StatusDot tone={dispatch.dispatch_confirmed ? "done" : "alert"} />
-                      <span className="text-sm font-medium">
-                        {dispatch.dispatch_confirmed ? "Dispatch confirmed" : "Dispatch not confirmed"}
-                      </span>
-                    </div>
-                    {dispatch.authority_statement && (
-                      <p className="rounded-xl border border-white/50 bg-white/45 p-3 text-sm leading-relaxed backdrop-blur-sm">
-                        “{dispatch.authority_statement}”
-                      </p>
-                    )}
                   </div>
                 ) : (
-                  <p className="py-10 text-center text-sm text-muted-foreground">
-                    No decision recorded. This is filled by the authority during the call.
-                  </p>
+                  <p className="py-8 text-center text-sm text-muted-foreground">{t.judgment.empty}</p>
                 )}
-              </CardContent>
-            </Card>
-          </div>
-        </SectionShell>
+              </ScrollArea>
+            </div>
+          </SectionShell>
 
-        <footer className="border-t border-border/60 pt-6 text-center text-xs text-muted-foreground">
-          Raqeeb · automated checkpoint security agent
-        </footer>
-      </main>
-    </div>
+          <footer className="border-t border-border/60 pt-6 text-center text-xs text-muted-foreground desk:hidden">
+            {t.footer}
+          </footer>
+        </main>
+      </div>
+    </DirectionProvider>
   )
 }

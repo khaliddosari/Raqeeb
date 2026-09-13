@@ -33,6 +33,7 @@ belt_*_gt.json
 
 # langgraph checkpoint store (local runs; on Modal this lives on a Volume)
 raqeeb_checkpoints.db
+raqeeb_checkpoints.db-*
 
 # boxed renders written next to any image the detector is pointed at
 *_annotated.png

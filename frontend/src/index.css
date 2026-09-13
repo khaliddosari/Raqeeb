@@ -1,15 +1,70 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
-@import "@fontsource/ibm-plex-sans-arabic/400.css";
-@import "@fontsource/ibm-plex-sans-arabic/600.css";
+
+
+/* Thmanyah Sans, served from khaliddosari/thmanyah-fonts through jsDelivr. It carries both
+   Arabic and Latin, so it is the whole UI font in both languages. Only the weights a page
+   actually uses are downloaded. */
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Light.woff2") format("woff2");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Thmanyah Sans";
+  src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Black.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
 
 @custom-variant dark (&:is(.dark *));
 
+/* Single-screen console layout. Width alone is not enough: a wide but short window
+   would crush a viewport-locked grid, so it also needs the height to hold two rows. */
+@custom-variant desk {
+  @media (min-width: 80rem) and (min-height: 40rem) {
+    @slot;
+  }
+}
+
+/* The console layout on a short laptop window, where secondary text gives up space first. */
+@custom-variant desk-short {
+  @media (min-width: 80rem) and (min-height: 40rem) and (max-height: 52rem) {
+    @slot;
+  }
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', 'IBM Plex Sans Arabic', sans-serif;
+    --font-sans: 'Thmanyah Sans', system-ui, sans-serif;
+    /* Mono stays for ids and codes. Thmanyah sits before the generic fallback so any Arabic
+       inside a mono label falls through to it glyph by glyph, rather than to a system face. */
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Thmanyah Sans', monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -232,4 +287,10 @@ body::before {
   body::before {
     opacity: 0.35;
   }
+}
+
+/* Tracking separates joined Arabic letters. Deliberately outside any @layer: layered rules lose to
+   Tailwind's utilities layer regardless of specificity, so this has to be unlayered to win. */
+html[lang="ar"] [class*="tracking-"] {
+  letter-spacing: normal;
 }

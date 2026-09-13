@@ -1,6 +1,6 @@
 import type { ReactNode } from "react"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 
 type Props = {
   index: number
@@ -8,6 +8,7 @@ type Props = {
   title: string
   caption: string
   status?: { label: string; tone: "idle" | "active" | "done" | "alert" }
+  className?: string
   children: ReactNode
 }
 
@@ -20,23 +21,35 @@ const toneClass: Record<string, string> = {
   alert: "bg-red-100/70 text-red-900 border-red-300/70",
 }
 
-export function SectionShell({ index, id, title, caption, status, children }: Props) {
+// One glass panel per section. On the desk layout the panel is sized by its grid cell,
+// so the body is a shrinkable flex column and anything long scrolls inside it.
+export function SectionShell({ index, id, title, caption, status, className, children }: Props) {
   return (
-    <section id={id} className="scroll-mt-20">
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="font-mono text-xs font-semibold text-primary/70 tabular-nums">
-          {String(index).padStart(2, "0")}
-        </span>
-        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-        {status && (
-          <Badge variant="outline" className={`font-mono text-xs uppercase backdrop-blur-sm ${toneClass[status.tone]}`}>
-            {status.label}
-          </Badge>
-        )}
+    <section
+      id={id}
+      className={cn(
+        "flex min-h-0 scroll-mt-20 flex-col rounded-2xl bg-card text-card-foreground shadow-(--glass-shadow) ring-1 ring-(--glass-edge) backdrop-blur-xl backdrop-saturate-150 desk:overflow-hidden",
+        className,
+      )}
+    >
+      <div className="shrink-0 border-b border-primary/10 px-4 pt-3 pb-2.5 desk:pt-2.5 desk:pb-2">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-xs font-semibold text-primary/70 tabular-nums">
+            {String(index).padStart(2, "0")}
+          </span>
+          <h2 className="truncate text-base font-semibold tracking-tight">{title}</h2>
+          {status && (
+            <Badge
+              variant="outline"
+              className={`ms-auto shrink-0 font-mono text-xs uppercase backdrop-blur-sm ${toneClass[status.tone]}`}
+            >
+              {status.label}
+            </Badge>
+          )}
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground desk:truncate">{caption}</p>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">{caption}</p>
-      <Separator className="my-4 bg-primary/15" />
-      {children}
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 desk:p-3">{children}</div>
     </section>
   )
 }

@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-09-12. Written for a developer joining the project.
+Last updated: 2026-09-13. Written for a developer joining the project.
 
 Raqeeb detects prohibited items in X-ray baggage scans and drives the response: a YOLOv8-OBB
 model flags an item, an employee physically verifies it, and a voice agent collects details,
@@ -13,12 +13,38 @@ were made, what is deliberately unfinished, and the traps that have already cost
 
 ## Where the project is
 
-Everything is merged to `main`. There are no open branches or pull requests. `origin/agentVoice`
-still exists but is fully contained in `main` and is safe to delete.
+It is live. The dashboard is at **https://raqeeb.khalid-ai.dev** (Vercel) and talks to the
+backend at `https://khaliddosari2014--raqeeb-fastapi-app.modal.run` (Modal). Both deploy from
+`main`: Vercel rebuilds on every push, Modal only when someone runs `modal deploy`.
+
+**The project is moving to OpenAI only, and is mid-switch.** Know which half you are on:
+
+- **Local `.env`: `openai` + `twilio`, Gemini removed.** OpenAI writes the report
+  (`gpt-4o-mini`) and handles the authority call (`gpt-realtime`). The three OpenAI values,
+  `OPENAI_API_KEY`, `OPENAI_PROJECT_ID` and `OPENAI_WEBHOOK_SECRET`, are not filled in yet; the
+  key Yazeed shared is rejected by OpenAI. Until they are, the local app refuses to start, by
+  design.
+- **The live deployment on Modal: still `gemini` + `mock`.** It keeps working as before until
+  its secret is updated, so the live site still depends on the Gemini key, which ran out of
+  quota for part of 2026-09-13.
+- **Twilio credentials are Yazeed's full account**, which owns a voice-capable number; calls
+  bill to him. Khalid's own Twilio account is a trial with no number. The credentials are in the
+  local `.env` only, not the Modal secret.
+- **Undecided: where the OpenAI webhook points.** OpenAI and Twilio both call back into the
+  server, so live calls need a public HTTPS `PUBLIC_BASE_URL`, and the webhook registered for
+  `realtime.call.incoming` must point at that same address. The Modal URL is the recommended
+  target because it never changes; a local ngrok address only works while that machine and
+  tunnel are up.
+
+Everything up to `18ada01` is merged to `main` and live. The newest dashboard work (the
+single-screen layout, Arabic mode and Thmanyah Sans) sits uncommitted on the local branch
+`single-page-dashboard-design`, so the live site still shows the previous layout.
+`origin/agentVoice` still exists but is fully contained in `main` and is safe to delete.
 
 Four people are on the project. Nawaf built the report generator. Yazeed built the voice
 agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detection model,
-the tracking and MOT benchmark, and owns the repo. Omar is the fourth contributor.
+the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
+the fourth contributor.
 
 The test suite is three tests, all passing, all driving the LangGraph workflow with mock
 providers. They cover the graph and nothing else: no route, no WebSocket, and none of the
@@ -37,7 +63,9 @@ YOLO detection -> display -> employee verification -> (rejected? end)
 
 The graph pauses at two points and waits for outside input: employee verification, and
 information collection. Both resume through HTTP routes, so the graph never blocks on a
-human.
+human. Paused incidents are persisted in SQLite through LangGraph's `AsyncSqliteSaver`, at the
+path in `CHECKPOINT_DB`, so an incident survives the process restarting between the pause and
+the resume. That was verified across two separate processes, not assumed.
 
 Detection, language model, and telephony are each reached only through the interfaces in
 `agent/providers/base.py`, resolved in `agent/providers/factory.py`. Route and graph code never
@@ -69,51 +97,99 @@ G.711 mu-law the telephony media streams already carry.
 `signalwire` is a drop-in replacement for `twilio`; its compatibility API mirrors Twilio's and
 both reuse the same webhook routes.
 
+## Deployment
+
+**Backend on Modal**, defined entirely in `modal_app.py`. Redeploy with
+`uv run modal deploy modal_app.py`.
+
+- The whole FastAPI app is one `@modal.asgi_app()` function, because the graph, the media
+  WebSocket and the monitor feed all have to live in the same process to see each other.
+- A Volume named `raqeeb-state` holds the graph checkpoints, the SQLite incident database and
+  uploaded frames. Without it, a paused incident would vanish the moment the container recycled.
+- Credentials come from the Modal secret `raqeeb-secrets`, built from `.env` values. Change
+  one with `modal secret create raqeeb-secrets --force KEY=value ...`, which replaces the whole
+  secret, so pass every key again.
+- `max_containers=1`, deliberately. The monitor fan-out is per process; a second container
+  would serve a dashboard that never sees the call it is watching.
+- `min_containers=0`, so it scales to zero and the first request after idle takes about ten
+  seconds while torch and the model load. Set it to 1 before a demo.
+
+**Frontend on Vercel**, project `raqeeb`, Root Directory `frontend`, configured by
+`frontend/vercel.json`. It learns the backend URL from `VITE_API_BASE_URL` in
+`frontend/.env.production`, which is committed on purpose since the URL is public.
+
+**Domain.** `raqeeb.khalid-ai.dev` is a Cloudflare CNAME to `cname.vercel-dns.com`, proxy set
+to DNS only so Vercel can issue the certificate. `render.yaml` is left over from an earlier
+plan and no longer reflects how this deploys.
+
 ## The dashboard
 
-`frontend/` is a separate Vite and React application, not templates served by FastAPI. It is a
-single page laid out in the order an operator reads it: detection preview, inference, report,
-authority call, judgment.
+`frontend/` is a separate Vite and React application, not templates served by FastAPI.
+Components come from shadcn, installed through its CLI on the **Base UI** primitive layer rather
+than Radix (`components.json` says `base-nova`). Do not mix the two. If you add a component,
+use the CLI so it matches; hand-written Radix imports will pull a second primitive library into
+the bundle.
 
-Components come from shadcn, installed through its CLI on the **Base UI** primitive layer
-rather than Radix (`components.json` says `base-nova`). Do not mix the two. If you add a
-component, use the CLI so it matches; hand-written Radix imports will pull a second primitive
-library into the bundle.
+**Two layouts.** On a window at least 1280px wide and 640px tall the page locks to the viewport
+as a single-screen console: preview and a wide inference workspace across the top, report,
+call monitor and judgment along the bottom in pipeline order. Nothing scrolls the page; long
+content scrolls inside its panel. Below that size it becomes a stacked, scrolling column. The
+breakpoints are the `desk` and `desk-short` custom variants at the top of
+`frontend/src/index.css`; `desk-short` trims secondary text on short laptop windows so the
+preview video keeps its room. Each section is one glass panel rendered by
+`frontend/src/components/SectionShell.tsx`.
+
+**Two languages.** The header toggle switches between English and Arabic, and Arabic is a full
+right-to-left layout, not translated labels.
+
+- Every visible string lives in `frontend/src/lib/i18n.ts`. English is the source of truth and
+  the Arabic dictionary is typed against it, so a missing Arabic key fails the build.
+- Codes that arrive from the backend (detection classes, severities, pipeline states,
+  transcript roles) are translated through lookup tables in the same file. Data values such as
+  locations, authority names and people's names are shown as they are, wrapped in `<bdi>` so
+  English text inside an Arabic sentence keeps its order.
+- Base UI's `DirectionProvider` wraps the app, and `dir` and `lang` are set on `<html>` in
+  `main.tsx` before the first render, so a returning Arabic reader never sees an LTR flash.
+  The choice is stored in `localStorage` under `raqeeb.lang`.
+- Team names deliberately stay in their LinkedIn spelling in both languages.
+
+**Font.** Thmanyah Sans, loaded from `khaliddosari/thmanyah-fonts@v1` through jsDelivr in five
+weights. It covers Latin and Arabic, so it is the only UI font. The monospace stack keeps
+system mono for ids and codes but lists Thmanyah before the generic fallback, so any Arabic
+inside a mono label still renders in it.
 
 **You must build it before the backend can serve it.** `frontend/dist` is gitignored, so a
 fresh clone has no dashboard at all until you run `npm run build`. FastAPI mounts that
 directory at `/dashboard` only if it exists, so a missing build is a 404 rather than an error
 that explains itself.
 
-Two ways to run it:
+Two ways to run it locally:
 
 | Port | What it serves | When |
 |---|---|---|
-| 8000 | the built bundle, via FastAPI | checking the real thing; needs `npm run build` first |
+| 8000 | the built bundle, via FastAPI | checking a build; needs `npm run build` first |
 | 5173 | `frontend/src` directly, via Vite | changing the UI; hot reload, proxies API and WebSocket to 8000 |
 
-The page talks to the backend through `frontend/src/lib/api.ts`. It defaults to same origin and
-reads `VITE_API_BASE_URL` when the two are deployed separately, which is how the Vercel and
-Modal split works.
+The page talks to the backend through `frontend/src/lib/api.ts`. Two backend features exist
+only to feed it: `detect()` writes a boxed render alongside the source image, exposed as
+`annotated_filename`, and `agent/monitor.py` plus `/ws/monitor/{incident_id}` stream transcript
+turns, status changes and the dispatch decision live, because the call transcript was
+previously only visible after the call ended.
 
-Two backend features exist only to feed this page. `detect()` writes a boxed render alongside
-the source image, exposed as `annotated_filename`. And `agent/monitor.py` plus
-`/ws/monitor/{incident_id}` stream transcript turns, status changes and the dispatch decision
-live, because the call transcript was previously only visible after the call ended.
+For demos, `frontend/public/test-image.png` backs the "Run test image" button, and the suspect
+form is prefilled (`SUSPECT_DEFAULTS` in `App.tsx`) so a full run needs no typing.
 
 ## Recent work, and why
 
-Six commits on 2026-09-12, in order.
+In roughly the order it landed, 2026-09-12 and 2026-09-13.
 
 **Demo video was broken twice over** (`60ced97`, `78ec7ba`). The dashboard's showcase clip was
 404ing on a fresh clone because both copies were gitignored, and once served it still would not
-render: `track_video.py` wrote MPEG-4 Part 2, which no mainstream browser decodes. Chrome
-reports that codec as unsupported outright. The clip only ever looked correct in VLC, so nobody
-noticed. The tracker now writes H.264 and falls back only when no encoder exists, saying so when
-it does. Note that OpenCV returns `isOpened()` as true even when the encoder failed to load, so
-that flag cannot be trusted on its own. A `--fps` flag was added to motion-interpolate the
-finished clip, which is how the committed 60fps demo is produced. Interpolation runs after
-tracking, so no metric changes.
+render: `track_video.py` wrote MPEG-4 Part 2, which no mainstream browser decodes. The tracker
+now writes H.264 and falls back only when no encoder exists, saying so when it does. OpenCV
+returns `isOpened()` as true even when the encoder failed to load, so that flag cannot be
+trusted on its own. A `--fps` flag motion-interpolates the finished clip, which is how the
+committed 60fps demo is produced. Interpolation runs after tracking, so no metric changes.
 
 **OpenAI webhook accepted forged requests** (`1f9ffa4`). When `OPENAI_WEBHOOK_SECRET` was unset
 it defaulted to an empty string, and the HMAC was computed with an empty key, which any caller
@@ -125,61 +201,105 @@ There is deliberately no silent fallback to the mock providers. A dispatch syste
 stops phoning anyone is a worse failure than one that will not start. Keep that property if you
 touch this.
 
-**Authority routing could ring a real person** (`4fdede7`). Three related problems. The YAML
-shipped a routable Saudi mobile as the default for every class, so a fresh clone with live
-telephony would call an actual phone; defaults are now unassignable placeholders. The
-`AUTHORITY_*` environment overrides never worked from `.env`, because `authority_mapping.py`
-expands them against `os.environ` and pydantic-settings does not populate it; `load_dotenv()`
-fixes that, with `override=False` so real environment variables still win in production. And
-fixing that exposed a third problem: an unreachable report endpoint raised out of `send_report`
-and killed the graph before the dispatch call was placed. It now returns `False`, so the
-incident records `report_send_failed` and still phones the authority, which is the half that
-actually gets a team moving.
+**Authority routing could ring a real person** (`4fdede7`). The YAML shipped a routable Saudi
+mobile as the default for every class, so a fresh clone with live telephony would call an
+actual phone; defaults are now unassignable placeholders. The `AUTHORITY_*` environment
+overrides never worked from `.env`, because `authority_mapping.py` expands them against
+`os.environ` and pydantic-settings does not populate it; `load_dotenv()` fixes that, with
+`override=False` so real environment variables still win in production. Fixing that exposed a
+third problem: an unreachable report endpoint raised out of `send_report` and killed the graph
+before the dispatch call was placed. It now returns `False`, so the incident records
+`report_send_failed` and still phones the authority.
+
+**Dashboard rebuilt as a React console** (`262c1fa`, `81e92ac`, then `d322529`, `b27a9b0`).
+The single hand-written HTML file became the Vite app, with the annotated render and the live
+monitor feed added to the backend to support it. Later: the navy light theme with glass
+surfaces, and Riyadh time in the header and in report timestamps.
+
+**Deployed, which forced the checkpointer swap** (`1185f86`). The graph used to keep paused
+incidents in `MemorySaver`, which is in process memory. On a platform that scales to zero, the
+resume request can land on a container that never saw the pause, so the incident is simply
+lost. Two things went wrong on the way to `AsyncSqliteSaver`, both worth knowing: the sync
+`SqliteSaver` raises `NotImplementedError` on every async method and the graph is driven with
+`ainvoke`; and entering its context manager without keeping a reference lets garbage
+collection close the connection underneath you, which is why `workflow.py` holds `_saver_cm`
+at module level.
+
+**Single-screen desktop layout, Arabic mode and Thmanyah Sans.** The console now fits one
+screen on desktop, the header carries only the brand, team, language toggle and clock, and the
+interface runs fully in Arabic. Built and verified at 1920x950, 1440x780 and 1280x720 plus
+phone and tablet, in both languages, against a real stored incident with a 2,800 character
+Arabic report. Not yet committed or deployed.
+
+**Local configuration moved to OpenAI only.** The team settled on one vendor for both the report
+and the call. The local `.env` was cleaned down to OpenAI, Twilio, authority overrides and the
+Roboflow key; Gemini, SignalWire and a stray `DATABASE_URL` were removed. Twilio came from
+Yazeed's account because Khalid's trial has no number. The Gemini code path is still in the
+repo and still what Modal runs.
 
 ## Traps
 
 **The app will not start if credentials are missing.** That is intended. Read the error; it
 names every variable it wants.
 
+**A locally built bundle talks to the deployed backend, not your local one.** `npm run build`
+reads `frontend/.env.production`, so port 8000 serves a page whose API calls go to Modal. Use
+port 5173 to exercise your local backend.
+
+**The single-screen layout needs a big enough window.** Below 1280x640 you get the stacked
+page, which looks like nothing changed. Maximise the window, or zoom out.
+
+**Port 8000 shows stale UI until you rebuild.** It serves `frontend/dist`, so source edits
+are invisible there until `npm run build`. Port 5173 always reflects source.
+
+**Arabic mode breaks if you use physical direction classes.** Write `ms-`, `me-`, `ps-`, `pe-`,
+`inset-s-` and `text-start`, never `ml-`, `pr-`, `left-` or `text-left`, or the element stays
+put when the layout mirrors. The Arabic letter-spacing override at the bottom of `index.css` is
+deliberately outside any `@layer`; inside one it loses to Tailwind's utilities and joined
+Arabic letters get pulled apart.
+
 **`AUTHORITY_*` overrides only work because of `load_dotenv()`.** If you refactor configuration
-loading, keep that call or those overrides silently stop applying again. Silently is the
-problem: nothing errors, routing just quietly uses the YAML defaults.
+loading, keep that call or those overrides silently stop applying again. Nothing errors;
+routing just quietly uses the YAML defaults.
 
 **Report delivery is skipped entirely when `LLM_PROVIDER=mock`.** `send_report` returns early.
 If you are testing an endpoint and seeing nothing arrive, this is why. It also short circuits
 for any endpoint starting `https://example-authority.local`, which is the sentinel the defaults
 use.
 
-**`PUBLIC_BASE_URL` must be HTTPS with no trailing slash.** URLs are built by concatenation, so
-a trailing slash produces a doubled separator, and the media stream URL is derived by swapping
-the scheme, so plain HTTP yields `ws://` which Twilio rejects. Locally this means a tunnel;
-ngrok issues a new URL on every restart, so this value is per-session.
+**`PUBLIC_BASE_URL` must be HTTPS with no trailing slash, and it is not set on Modal.** URLs are
+built by concatenation, and the media stream URL is derived by swapping the scheme, so plain
+HTTP yields `ws://`, which Twilio rejects. The Modal secret has no `PUBLIC_BASE_URL`, so the
+deployment falls back to `http://localhost:8000`. Invisible while telephony is mocked; the first
+live call would dial back to nothing. Set it to the Modal URL before switching telephony on.
+
+**The public site spends real money or quota.** Today anyone who finds it can run reports on
+the project's Gemini key, and that quota has already run out once. After the OpenAI switch it
+gets worse: reports bill the OpenAI account, and with live telephony every run places a real
+call billed per minute by both OpenAI Realtime and Twilio.
+
+**The local `.env` carries a billed Twilio token.** Calls placed with it charge Yazeed's
+account. Move it between machines privately (USB or an encrypted note), never through chat or
+email, and never commit it; `.env` is gitignored and must stay that way.
+
+**Tests use in-memory checkpoints.** `tests/conftest.py` sets `CHECKPOINT_DB=:memory:` so each
+run starts clean. Anything that changes how the checkpointer is built should keep that path.
 
 **Twilio trial accounts only dial verified numbers.** A live call to an unverified destination
 fails without an obvious explanation.
 
-**Port 8000 shows stale UI until you rebuild.** It serves `frontend/dist`, so source edits
-are invisible there until `npm run build`. Port 5173 always reflects source. More than one
-person has "fixed" a bug that was only a stale bundle.
-
 **The model emits markdown and the UI strips it at render.** `frontend/src/lib/plaintext.ts`
-flattens it, and the report text uses `dir="auto"` so Arabic lays out right to left. Both are
-safety nets over an unpinned prompt, not the fix. If you pin the prompt, leave them anyway.
+flattens it, and the report text uses `dir="auto"`. Both are safety nets over an unpinned
+prompt, not the fix. If you pin the prompt, leave them anyway.
 
 **Report timestamps are Riyadh local, stored timestamps are UTC.** `agent/report.py` uses a
 fixed UTC+3 offset for `date_time` and the incident id, because Saudi Arabia has no DST and
 Windows ships no IANA database. `created_at` and `updated_at` in `models.py` stay UTC on
-purpose. Do not "unify" these without thinking about which is which.
-
-**Model output language is not pinned.** With a real Gemini key, report generation has produced
-a 2,500 character Arabic summary where the mock produces roughly 250 characters of English.
-Nothing breaks, but the dashboard renders that field and the voice agent reads it aloud to the
-authority. This is inferred by the model rather than chosen by us, so it is not stable
-run to run. See future work.
+purpose.
 
 **Model weights are committed directly, not via LFS.** A `.gitattributes` marking them as LFS
-was removed because the raw blobs were already in history, so LFS would have added cost with no
-benefit. A plain clone gets the weights. Do not reintroduce LFS without rewriting history.
+was removed because the raw blobs were already in history. Do not reintroduce LFS without
+rewriting history.
 
 ## Tools
 
@@ -187,38 +307,60 @@ Python 3.12 or newer, managed with `uv`. `uv sync` installs the locked dependenc
 the dev group.
 
 Ultralytics YOLOv8-OBB for detection, trained on Modal via `modal_train.py`. OpenCV and a
-retuned BoT-SORT for tracking. FastAPI, SQLAlchemy over SQLite, and LangGraph for the
-application. Provider SDKs are `google-genai` for Gemini and `twilio` for telephony; the OpenAI
-path deliberately uses `httpx` and `websockets` directly rather than the OpenAI SDK. `ffmpeg`
-arrives through `imageio-ffmpeg` in the dev group and is needed only for `--fps`. The dataset
-comes from Roboflow and needs a key only for the notebooks.
+retuned BoT-SORT for tracking. FastAPI, SQLAlchemy over SQLite, and LangGraph with
+`langgraph-checkpoint-sqlite` for the application. Provider SDKs are `google-genai` for Gemini
+and `twilio` for telephony; the OpenAI path deliberately uses `httpx` and `websockets` directly
+rather than the OpenAI SDK. `ffmpeg` arrives through `imageio-ffmpeg` in the dev group and is
+needed only for `--fps`. The dataset comes from Roboflow and needs a key only for the notebooks.
 
-The dashboard needs Node. It is Vite, React 19, TypeScript and Tailwind v4, with shadcn
-components on Base UI primitives and Lucide icons. `npm install` then `npm run build` in
+The dashboard needs Node: Vite, React 19, TypeScript and Tailwind v4, with shadcn components on
+Base UI primitives, Lucide icons and Thmanyah Sans. `npm install` then `npm run build` in
 `frontend/`.
 
-Deployment is split: the frontend goes to Vercel, the backend to Modal. `render.yaml` is
-left over from an earlier plan and no longer reflects how this deploys.
+Hosting is Modal for the backend, Vercel for the frontend, and Cloudflare for DNS.
 
 ## Future work
 
 **DEFERRED: test the SIP webhook.** Known gap, consciously postponed on 2026-09-12 to get
-deployment done first. Pick this up next.
+deployment done first. Pick this up next. It matters more now: with OpenAI as the only
+provider, this webhook is the sole way a dispatch call ever connects.
 
 The signature verification in `agent/routes/openai_routes.py` is security relevant and has
 only ever been checked by hand. Those manual checks did pass: a correctly signed request is
 accepted, forgeries signed with an empty or wrong key are rejected with 400, a stale
 timestamp is rejected, and an unset secret fails closed with 500 rather than verifying
 against an empty key. None of it is in `tests/`, so nothing stops a regression, and the bug
-this code exists to prevent was live in the repo once already (see `1f9ffa4`).
+this code exists to prevent was live in the repo once already (see `1f9ffa4`). The four cases
+are straightforward to drive against `_verify_signature` directly, no live call needed.
 
-Writing it is not hard: the four cases above are straightforward to drive against
-`_verify_signature` directly, no live call needed. It was left undone for time, not
-difficulty.
+**Finish the OpenAI switch.** In order:
+
+1. Get `OPENAI_API_KEY`, `OPENAI_PROJECT_ID` and `OPENAI_WEBHOOK_SECRET`, all from the same
+   OpenAI project. The key and project id come from the dashboard; the secret is shown once,
+   when you create a webhook for `realtime.call.incoming`.
+2. Point that webhook at `https://khaliddosari2014--raqeeb-fastapi-app.modal.run/api/openai/webhook`,
+   unless the team decides to run calls from a local tunnel instead.
+3. Rebuild the Modal secret with `LLM_PROVIDER=openai`, `TELEPHONY_PROVIDER=twilio`, the three
+   OpenAI values, the three Twilio values, the `AUTHORITY_*` overrides, `PUBLIC_BASE_URL` set to
+   the Modal URL, and `ALLOWED_ORIGINS` set to `https://raqeeb.khalid-ai.dev`. CORS is currently
+   the `*` wildcard, so any site can call the API.
+4. Set `min_containers=1` in `modal_app.py` for demo sessions, so a cold start does not delay
+   the webhook while a call is ringing, then redeploy.
+
+**Protect the model quota on the public site.** Rate limiting, or a demo mode that replays a
+stored report, before sharing the link widely.
 
 **Pin the report language and length.** Decide whether reports are Arabic or English and say so
 explicitly in the instruction in `agent/report.py`, and cap the summary. Right now the model
-chooses, and the result is both long for a spoken call and inconsistent between runs.
+chooses, and the result is long for a spoken call and inconsistent between runs. With the
+dashboard now bilingual, the natural choice is to generate in the language the operator has
+selected.
+
+**Serve annotated renders smaller.** They are written as roughly 1.5 MB PNGs and load slowly
+from Modal; the dashboard shows a placeholder until they finish. JPEG or WebP would cut that
+by an order of magnitude.
+
+**Confirm Arabic spellings of the team names**, if they should be shown in Arabic mode.
 
 **Add CI.** There is none. Three tests that nobody runs automatically will rot.
 
@@ -227,10 +369,10 @@ around 0.87, but the distinct-object count that a screening log would record is 
 few. Confirmation thresholds only trade false alarms against misses; they cannot recover an
 object the detector never saw. This needs detector work, not tracker tuning.
 
-**Consider moving weights out of git.** Fine at the current size and churn, three commits ever.
-If retraining becomes frequent, push weights to the Modal volume or a GitHub release rather than
-reaching for LFS.
+**Consider moving weights out of git.** Fine at the current size and churn. If retraining
+becomes frequent, push weights to the Modal volume or a GitHub release rather than reaching for
+LFS.
 
-**`tests/conftest.py` uses a US placeholder number** for the Twilio origin. That is defensible,
-since Twilio does not readily sell Saudi numbers, but it is worth a deliberate decision rather
-than an accident.
+**`tests/conftest.py` uses a US placeholder number** for the Twilio origin. Defensible, since
+Twilio does not readily sell Saudi numbers, but worth a deliberate decision rather than an
+accident.
