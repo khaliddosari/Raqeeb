@@ -28,7 +28,6 @@ const identity = (value: string) => value
 
 const en = {
   brand: "Raqeeb",
-  brandMark: "R",
   docTitle: "Raqeeb · Checkpoint Monitor",
   switchTo: "العربية",
   switchToLang: "ar" as Lang,
@@ -37,7 +36,7 @@ const en = {
   team: "Team",
   onLinkedIn: (name: string) => `${name} on LinkedIn`,
   dismiss: "Click to dismiss",
-  footer: "Raqeeb · automated checkpoint security agent",
+  footer: "Raqeeb · screening and response for government and private security",
 
   // detection classes, severities and pipeline states come from the backend as codes
   detectionClass: identity,
@@ -51,7 +50,7 @@ const en = {
     pause: "Pause preview",
     play: "Play preview",
     description:
-      "A YOLOv8-OBB model flags prohibited items in X-ray baggage scans, an employee physically verifies the find, and a voice agent then collects the details, writes the report, routes it to the responsible authority and phones them to request dispatch.",
+      "Built for government and private security agencies. A YOLOv8-OBB model flags prohibited items in X-ray baggage scans, an employee verifies the find on the spot, and a voice agent writes the report, routes it to the responsible authority and phones them to request dispatch.",
   },
 
   inference: {
@@ -73,7 +72,6 @@ const en = {
     testAlt: "Bundled X-ray test frame",
     annotatedOutput: "Annotated output",
     input: "Input",
-    noFrame: "No frame selected",
     annotatedAlt: "Annotated detection",
     selectedAlt: "Selected frame",
     confidence: (pct: string) => `${pct}% confidence`,
@@ -112,7 +110,8 @@ const en = {
     suspectId: "Suspect ID",
     employee: "Employee",
     notes: "Notes",
-    empty: "No report yet. Run a detection and confirm it to generate one.",
+    emptyTitle: "No report yet",
+    empty: "Run a detection and confirm it to generate one.",
   },
 
   call: {
@@ -128,7 +127,8 @@ const en = {
     connected: "connected",
     disconnected: "disconnected",
     role: identity,
-    empty: "No transcript. Turns appear here once a live call is running; mock telephony places no call.",
+    emptyTitle: "No transcript yet",
+    empty: "Turns appear here once a live call is running; mock telephony places no call.",
   },
 
   judgment: {
@@ -157,14 +157,15 @@ const en = {
       ` per the class-to-authority mapping.`,
     ],
     recommendedAction: "Recommended action",
-    empty: "Nothing to explain yet.",
+    emptyTitle: "Nothing to explain yet",
+    empty: "The reasoning behind each decision appears here once a detection opens an incident.",
   },
 }
 
 type Dict = typeof en
 
 const AR_CLASSES: Record<string, string> = {
-  Gun: "مسدس",
+  Gun: "سلاح ناري",
   Knife: "سكين",
   Pliers: "كماشة",
   Scissors: "مقص",
@@ -206,7 +207,6 @@ const lookup = (table: Record<string, string>) => (value: string) => table[value
 
 const ar: Dict = {
   brand: "رقيب",
-  brandMark: "ر",
   docTitle: "رقيب · شاشة مراقبة نقطة التفتيش",
   switchTo: "English",
   switchToLang: "en",
@@ -215,7 +215,7 @@ const ar: Dict = {
   team: "الفريق",
   onLinkedIn: (name: string) => `${name} على لينكدإن`,
   dismiss: "انقر للإغلاق",
-  footer: "رقيب · وكيل آلي لأمن نقاط التفتيش",
+  footer: "رقيب · الفحص والاستجابة للجهات الأمنية الحكومية والخاصة",
 
   detectionClass: lookup(AR_CLASSES),
   severity: lookup(AR_SEVERITY),
@@ -224,11 +224,11 @@ const ar: Dict = {
   preview: {
     title: "معاينة الكشف",
     caption: "النموذج المدرَّب يتتبع المواد المحظورة على سير الأمتعة إطارًا بإطار.",
-    status: "عرض متواصل",
+    status: "عرض حي",
     pause: "إيقاف المعاينة مؤقتًا",
     play: "تشغيل المعاينة",
     description:
-      "يرصد نموذج YOLOv8-OBB المواد المحظورة في صور الأشعة السينية للأمتعة، ويتحقق منها الموظف ميدانيًا، ثم يتولى وكيل صوتي جمع التفاصيل وكتابة البلاغ وتوجيهه إلى الجهة المختصة والاتصال بها لطلب إرسال فريق.",
+      "مصمَّم للجهات الأمنية الحكومية والخاصة. يرصد نموذج YOLOv8-OBB المواد المحظورة في صور الأشعة السينية للأمتعة، ويتحقق منها الموظف ميدانيًا، ثم يتولى وكيل صوتي كتابة البلاغ وتوجيهه إلى الجهة المختصة والاتصال بها لطلب إرسال فريق.",
   },
 
   inference: {
@@ -241,20 +241,20 @@ const ar: Dict = {
     frame: "صورة الفحص",
     chooseFile: "اختيار ملف",
     noFile: "لم يُختر ملف",
-    runDetection: "تشغيل الكشف",
+    runDetection: "تحليل الكشف",
     runningDetection: "جارٍ الكشف…",
-    runTest: "تشغيل الصورة التجريبية",
+    runTest: "رفع صورة جاهزة للإختبار",
     runningTest: "جارٍ التشغيل…",
     testCaption: "صورة أشعة سينية مرفقة لتجربة المسار دون البحث عن صورة.",
-    testAria: "تشغيل الكشف على الصورة التجريبية المرفقة",
+    testAria: "تحليل الكشف على الصورة التجريبية المرفقة",
     testAlt: "صورة أشعة سينية تجريبية",
     annotatedOutput: "النتيجة الموسومة",
     input: "الصورة المدخلة",
-    noFrame: "لم تُختر صورة",
     annotatedAlt: "صورة الكشف الموسومة",
     selectedAlt: "الصورة المختارة",
-    confidence: (pct: string) => `نسبة الثقة ${pct}%`,
-    pipeline: "مسار الحادثة",
+    // Isolated: after Arabic letters, bidi rules would otherwise move the percent sign to the far side.
+    confidence: (pct: string) => `نسبة الثقة \u2066${pct}%\u2069`,
+    pipeline: "الخط الزمني للبلاغ",
     openIncident: "شغّل الكشف لفتح حادثة.",
     confirm: "تأكيد التهديد",
     falsePositive: "إنذار خاطئ",
@@ -273,7 +273,7 @@ const ar: Dict = {
   },
 
   report: {
-    title: "بلاغ الحادثة",
+    title: "كرت البلاغ",
     caption: "يُنشأ من الكشف المُتحقَّق منه، ثم يُوجَّه إلى الجهة المختصة.",
     generated: "أُنشئ",
     pending: "قيد الانتظار",
@@ -288,11 +288,12 @@ const ar: Dict = {
     suspectId: "هوية المشتبه به",
     employee: "الموظف",
     notes: "الملاحظات",
-    empty: "لا يوجد بلاغ بعد. شغّل الكشف وأكّده لإنشاء بلاغ.",
+    emptyTitle: "لا يوجد بلاغ بعد",
+    empty: "شغّل الكشف وأكّده لإنشاء بلاغ.",
   },
 
   call: {
-    title: "مراقبة الاتصال بالجهة",
+    title: "بث الإتصال الحي",
     caption: "الاتصال الصادر بالجهة المختصة، يُبث حوارًا بحوار لحظة وقوعه.",
     ended: "انتهى",
     inProgress: "جارٍ",
@@ -304,7 +305,8 @@ const ar: Dict = {
     connected: "متصل",
     disconnected: "غير متصل",
     role: lookup(AR_ROLES),
-    empty: "لا يوجد نص بعد. تظهر الحوارات هنا عند بدء اتصال فعلي، ولا يُجري وضع المحاكاة أي اتصال.",
+    emptyTitle: "لا يوجد نص بعد",
+    empty: "تظهر الحوارات هنا عند بدء اتصال فعلي، ولا يُجري وضع المحاكاة أي اتصال.",
   },
 
   judgment: {
@@ -333,7 +335,8 @@ const ar: Dict = {
       ` وفق جدول ربط الفئات بالجهات.`,
     ],
     recommendedAction: "الإجراء الموصى به",
-    empty: "لا شيء لتوضيحه بعد.",
+    emptyTitle: "لا شيء لتوضيحه بعد",
+    empty: "يظهر هنا منطق كل قرار بعد أن يفتح الكشف حادثة.",
   },
 }
 

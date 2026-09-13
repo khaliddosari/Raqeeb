@@ -15,10 +15,10 @@ type Props = {
 // Darker foregrounds than the dark-theme equivalents, so the tinted pills still clear
 // contrast requirements against a light surface.
 const toneClass: Record<string, string> = {
-  idle: "bg-white/50 text-muted-foreground border-white/60",
-  active: "bg-amber-100/70 text-amber-900 border-amber-300/70",
-  done: "bg-emerald-100/70 text-emerald-900 border-emerald-300/70",
-  alert: "bg-red-100/70 text-red-900 border-red-300/70",
+  idle: "bg-white/75 text-foreground/80 border-primary/20",
+  active: "bg-amber-100 text-amber-950 border-amber-400",
+  done: "bg-emerald-100 text-emerald-950 border-emerald-400",
+  alert: "bg-red-100 text-red-950 border-red-400",
 }
 
 // One glass panel per section. On the desk layout the panel is sized by its grid cell,
@@ -32,16 +32,16 @@ export function SectionShell({ index, id, title, caption, status, className, chi
         className,
       )}
     >
-      <div className="shrink-0 border-b border-primary/10 px-4 pt-3 pb-2.5 desk:pt-2.5 desk:pb-2">
+      <div className="shrink-0 border-b border-primary/15 px-4 pt-3 pb-2.5 desk:pt-2.5 desk:pb-2">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-semibold text-primary/70 tabular-nums">
-            {String(index).padStart(2, "0")}
+          <span className="font-mono text-xl leading-none font-bold text-primary tabular-nums">
+            {index}
           </span>
           <h2 className="truncate text-base font-semibold tracking-tight">{title}</h2>
           {status && (
             <Badge
               variant="outline"
-              className={`ms-auto shrink-0 font-mono text-xs uppercase backdrop-blur-sm ${toneClass[status.tone]}`}
+              className={`ms-auto shrink-0 font-mono text-xs uppercase backdrop-blur-sm rtl:font-sans ${toneClass[status.tone]}`}
             >
               {status.label}
             </Badge>

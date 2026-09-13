@@ -151,12 +151,26 @@ right-to-left layout, not translated labels.
 - Base UI's `DirectionProvider` wraps the app, and `dir` and `lang` are set on `<html>` in
   `main.tsx` before the first render, so a returning Arabic reader never sees an LTR flash.
   The choice is stored in `localStorage` under `raqeeb.lang`.
-- Team names deliberately stay in their LinkedIn spelling in both languages.
+- Team names switch to their Arabic spelling in Arabic mode. Both spellings live in `TEAM` in
+  `App.tsx`, not in the dictionary; the English ones match each person's LinkedIn.
 
 **Font.** Thmanyah Sans, loaded from `khaliddosari/thmanyah-fonts@v1` through jsDelivr in five
 weights. It covers Latin and Arabic, so it is the only UI font. The monospace stack keeps
 system mono for ids and codes but lists Thmanyah before the generic fallback, so any Arabic
-inside a mono label still renders in it.
+inside a mono label still renders in it. The font's optional OpenType features (Arabic swash
+letterforms, alternate fatha, discretionary ligatures, fractions) are on for headings (`h1` to
+`h4`), buttons, tabs and placeholder titles only, set in `index.css`; body text and data stay
+plain. Anything else that should read as a button opts in with the `font-ornate` class, so mark
+new sub-headings up as real `h3`/`h4` elements rather than styled paragraphs.
+
+**Branding and placeholders.** The logo is `components/Logo.tsx` (a shield holding an eye) and
+`public/favicon.svg`, deliberately free of any national, ministry or company emblem because the
+product is pitched to government and private security agencies alike; keep new artwork neutral
+in the same way. Panels waiting on the pipeline show line illustrations from
+`components/Illustrations.tsx` inside shadcn's `Empty`. At desk each placeholder is a size
+container that drops its artwork, then its description, when its box gets short, via the
+`box-short` and `box-tiny` variants in `index.css`, so an empty panel never scrolls. Text sizes are one step above Tailwind's defaults, set
+in an `@theme` block in `index.css`: `text-xs` is 13px, `text-sm` 15px and `text-base` 17px.
 
 **You must build it before the backend can serve it.** `frontend/dist` is gitignored, so a
 fresh clone has no dashboard at all until you run `npm run build`. FastAPI mounts that
@@ -254,7 +268,10 @@ are invisible there until `npm run build`. Port 5173 always reflects source.
 
 **Arabic mode breaks if you use physical direction classes.** Write `ms-`, `me-`, `ps-`, `pe-`,
 `inset-s-` and `text-start`, never `ml-`, `pr-`, `left-` or `text-left`, or the element stays
-put when the layout mirrors. The Arabic letter-spacing override at the bottom of `index.css` is
+put when the layout mirrors. Setting `dir="ltr"` on a block element for a phone number or id
+has the same effect, so isolate the value in an inline `<span dir="ltr">` instead. Labels styled
+`font-mono` that can hold Arabic need `rtl:font-sans`, or spaces come from the mono font and
+open wide gaps between words. The Arabic letter-spacing override at the bottom of `index.css` is
 deliberately outside any `@layer`; inside one it loses to Tailwind's utilities and joined
 Arabic letters get pulled apart.
 
@@ -359,8 +376,6 @@ selected.
 **Serve annotated renders smaller.** They are written as roughly 1.5 MB PNGs and load slowly
 from Modal; the dashboard shows a placeholder until they finish. JPEG or WebP would cut that
 by an order of magnitude.
-
-**Confirm Arabic spellings of the team names**, if they should be shown in Arabic mode.
 
 **Add CI.** There is none. Three tests that nobody runs automatically will rot.
 

@@ -1,10 +1,13 @@
 import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { Pause as PauseIcon, Play as PlayIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { CallIllustration, JudgmentIllustration, ReportIllustration, ScanIllustration } from "@/components/Illustrations"
+import { Logo } from "@/components/Logo"
 import { SectionShell } from "@/components/SectionShell"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -26,12 +29,12 @@ import {
 import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
 import { toPlainText } from "@/lib/plaintext"
 
-// Names stay in the spelling each person uses on LinkedIn, in both languages.
-const TEAM = [
-  { name: "Khalid Al-Dosari", url: "https://www.linkedin.com/in/khalid-al-dosari/" },
-  { name: "Nawaf Alsharani", url: "https://www.linkedin.com/in/nawaf-alsharani-a431b731a/" },
-  { name: "Yazeed Bin Shihah", url: "https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/" },
-  { name: "Omar Al-Dhawyan", url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/" },
+// English names follow each person's LinkedIn spelling; the Arabic spellings are their own.
+const TEAM: { name: Record<Lang, string>; url: string }[] = [
+  { name: { en: "Khalid Al-Dosari", ar: "خالد آل دوسري" }, url: "https://www.linkedin.com/in/khalid-al-dosari/" },
+  { name: { en: "Nawaf Alsharani", ar: "نواف الشهراني" }, url: "https://www.linkedin.com/in/nawaf-alsharani-a431b731a/" },
+  { name: { en: "Yazeed Bin Shihah", ar: "يزيد بن شيحة" }, url: "https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/" },
+  { name: { en: "Omar Al-Dhawyan", ar: "عمر الضويان" }, url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/" },
 ]
 
 const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
@@ -63,13 +66,34 @@ function StatusDot({ tone }: { tone: "idle" | "active" | "done" | "alert" }) {
   )
 }
 
+// Placeholder for a panel still waiting on the pipeline: artwork, a short heading and what fills it.
+// At desk the box is a size container, so on a short window it sheds the artwork and then the
+// description rather than making an empty panel scroll.
+function Placeholder({ art, title, body }: { art: React.ReactNode; title: string; body: string }) {
+  return (
+    <div className="flex min-h-0 flex-col desk:flex-1 desk:@container-size desk:[container-name:placeholder]">
+      <Empty className="min-h-0 gap-2 overflow-hidden p-4 desk:p-2">
+        <EmptyHeader className="gap-1.5">
+          <EmptyMedia className="mb-1 text-primary box-short:hidden">{art}</EmptyMedia>
+          <EmptyTitle role="heading" aria-level={3} className="text-sm font-semibold">
+            {title}
+          </EmptyTitle>
+          <EmptyDescription className="text-xs/relaxed box-tiny:hidden">{body}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    </div>
+  )
+}
+
 function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
     <TableRow className="border-border/50">
-      <TableCell className="py-1.5 align-top text-xs uppercase tracking-wide text-muted-foreground sm:w-36">
+      {/* whitespace-normal: the table cell default is nowrap, which let long notes push the table into
+          a sideways scroll that keyboard users could not reach */}
+      <TableCell className="py-1.5 align-top text-xs whitespace-normal uppercase tracking-wide text-muted-foreground sm:w-36">
         {label}
       </TableCell>
-      <TableCell className={`py-1.5 text-sm wrap-break-word ${mono ? "font-mono tabular-nums" : ""}`}>
+      <TableCell className={`py-1.5 text-sm whitespace-normal wrap-break-word ${mono ? "font-mono tabular-nums" : ""}`}>
         {value ?? "—"}
       </TableCell>
     </TableRow>
@@ -245,19 +269,19 @@ export default function App() {
   return (
     <DirectionProvider direction={lang === "ar" ? "rtl" : "ltr"}>
       <div className="min-h-screen text-foreground desk:flex desk:h-dvh desk:flex-col desk:overflow-hidden">
-        <header className="sticky top-0 z-20 border-b border-white/40 bg-background/55 backdrop-blur-xl backdrop-saturate-150 desk:static desk:shrink-0">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 desk:h-12 desk:max-w-[112rem] desk:flex-nowrap desk:py-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground shadow-sm ring-1 ring-white/20">
-                {t.brandMark}
-              </div>
-              <span className="font-semibold tracking-tight">{t.brand}</span>
+        <header className="sticky top-0 z-20 border-b border-primary/10 bg-background/65 backdrop-blur-xl backdrop-saturate-150 desk:static desk:shrink-0">
+          {/* From lg the header is three columns with equal outer tracks, so the team sits on the page's
+              true centre rather than midway between a narrow brand and a wide clock. */}
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 lg:grid lg:grid-cols-[1fr_auto_1fr] desk:h-12 desk:max-w-[112rem] desk:py-0">
+            <div className="flex min-w-0 items-center gap-2 lg:justify-self-start">
+              <Logo className="size-8 drop-shadow-sm" />
+              <h1 className="text-base font-bold tracking-tight">{t.brand}</h1>
             </div>
 
             {/* its own full-width row under the brand until there is room to sit inline */}
             <nav
               aria-label={t.team}
-              className="order-last flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-1 lg:order-0 lg:w-auto lg:flex-1"
+              className="order-last flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-1 lg:order-0 lg:w-auto"
             >
               {TEAM.map((m) => (
                 <a
@@ -265,23 +289,22 @@ export default function App() {
                   href={m.url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  title={t.onLinkedIn(m.name)}
-                  dir="ltr"
-                  className="text-sm text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                  title={t.onLinkedIn(m.name[lang])}
+                  className="inline-block py-1 text-sm font-bold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                 >
-                  {m.name}
+                  {m.name[lang]}
                 </a>
               ))}
             </nav>
 
-            <div className="ms-auto flex items-center gap-3 lg:ms-0">
+            <div className="ms-auto flex items-center gap-3 lg:ms-0 lg:justify-self-end">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setLang(t.switchToLang)}
                 aria-label={t.switchToLabel}
-                className="h-10 bg-white/50 px-3 lg:h-7"
+                className="h-10 bg-white/70 px-3 text-sm lg:h-8"
               >
                 <span lang={t.switchToLang}>{t.switchTo}</span>
               </Button>
@@ -365,11 +388,21 @@ export default function App() {
                 <div className="flex flex-col gap-3 desk:p-1 desk:pe-3 desk-short:gap-2">
                   <div className="grid gap-1.5">
                     <Label htmlFor="emp-name">{t.inference.employee}</Label>
-                    <Input id="emp-name" value={employeeName} onChange={(e) => setEmployeeName(e.target.value)} />
+                    <Input
+                      id="emp-name"
+                      value={employeeName}
+                      onChange={(e) => setEmployeeName(e.target.value)}
+                      className="text-center"
+                    />
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="emp-id">{t.inference.employeeId}</Label>
-                    <Input id="emp-id" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} />
+                    <Input
+                      id="emp-id"
+                      value={employeeId}
+                      onChange={(e) => setEmployeeId(e.target.value)}
+                      className="text-center"
+                    />
                   </div>
                   <div className="grid gap-1.5">
                     <Label htmlFor="frame">{t.inference.frame}</Label>
@@ -389,10 +422,10 @@ export default function App() {
                       aria-hidden="true"
                       className="flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border border-input ps-1 pe-2.5 text-sm transition-colors hover:bg-white/40 peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50"
                     >
-                      <span className="shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+                      <span className="font-ornate shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
                         {t.inference.chooseFile}
                       </span>
-                      <span id="frame-status" dir="auto" className="truncate text-muted-foreground">
+                      <span id="frame-status" dir="auto" className="min-w-0 flex-1 truncate text-center text-muted-foreground">
                         {file ? file.name : t.inference.noFile}
                       </span>
                     </label>
@@ -402,7 +435,7 @@ export default function App() {
                   </Button>
 
                   {/* stacked with the image below on small screens; a thumbnail beside the button at desk */}
-                  <div className="flex flex-col gap-2 rounded-xl bg-white/40 p-2.5 ring-1 ring-white/60 desk:flex-row-reverse desk:items-center">
+                  <div className="flex flex-col gap-2 rounded-xl bg-white/55 p-2.5 ring-1 ring-primary/12 desk:flex-row-reverse desk:items-center">
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                       <Button variant="secondary" onClick={runTestImage} disabled={busy !== null} className="w-full">
                         {busy === "detect" ? t.inference.runningTest : t.inference.runTest}
@@ -414,7 +447,7 @@ export default function App() {
                       onClick={runTestImage}
                       disabled={busy !== null}
                       aria-label={t.inference.testAria}
-                      className="shrink-0 overflow-hidden rounded-lg ring-1 ring-white/60 disabled:cursor-not-allowed desk:w-24 desk-short:w-20"
+                      className="shrink-0 overflow-hidden rounded-lg ring-1 ring-primary/12 disabled:cursor-not-allowed desk:w-24 desk-short:w-20"
                     >
                       <img
                         src={TEST_IMAGE_URL}
@@ -427,9 +460,9 @@ export default function App() {
               </ScrollArea>
 
               {/* output */}
-              <div className="flex min-h-0 flex-col overflow-hidden rounded-xl bg-white/40 ring-1 ring-white/60 desk:h-full">
-                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/50 px-3 py-2 text-xs">
-                  <span className="font-medium">{annotated ? t.inference.annotatedOutput : t.inference.input}</span>
+              <div className="flex min-h-0 flex-col overflow-hidden rounded-xl bg-white/55 ring-1 ring-primary/12 desk:h-full">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-primary/10 px-3 py-2 text-xs">
+                  <h3 className="font-semibold">{annotated ? t.inference.annotatedOutput : t.inference.input}</h3>
                   {incident && <span className="truncate font-mono text-muted-foreground">{incident.id}</span>}
                 </div>
                 {/* at desk the image is positioned into this box so object-contain can fit it to any height */}
@@ -455,12 +488,12 @@ export default function App() {
                       className="block w-full rounded-md object-contain opacity-70 desk:absolute desk:inset-2 desk:size-[calc(100%-1rem)]"
                     />
                   ) : (
-                    <p className="text-sm text-muted-foreground">{t.inference.noFrame}</p>
+                    <ScanIllustration className="w-44 max-w-[70%] text-primary desk:max-h-[80%]" />
                   )}
                 </div>
                 {incident?.detection_class && (
-                  <div className="flex shrink-0 items-center gap-3 border-t border-white/50 px-3 py-2">
-                    <Badge className="font-mono text-xs uppercase">{t.detectionClass(incident.detection_class)}</Badge>
+                  <div className="flex shrink-0 items-center gap-3 border-t border-primary/10 px-3 py-2">
+                    <Badge className="font-mono text-xs uppercase rtl:font-sans">{t.detectionClass(incident.detection_class)}</Badge>
                     <span className="text-xs tabular-nums text-muted-foreground">{t.inference.confidence(confidencePct)}</span>
                   </div>
                 )}
@@ -469,20 +502,23 @@ export default function App() {
               {/* verification */}
               <ScrollArea className="md:col-span-2 desk:col-span-1 desk:h-full desk:min-h-0">
                 <div className="flex flex-col gap-3 desk:p-1 desk:pe-3">
-                  <div className="flex flex-col gap-2 rounded-xl bg-white/40 p-3 ring-1 ring-white/60">
+                  <div className="flex flex-col gap-2 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12">
                     <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="font-medium">{t.inference.pipeline}</span>
-                      <span className="truncate font-mono uppercase text-muted-foreground">
+                      <h3 className="font-semibold">{t.inference.pipeline}</h3>
+                      <span className="truncate font-mono uppercase text-muted-foreground rtl:font-sans">
                         {t.status(incident?.status ?? "idle")}
                       </span>
                     </div>
-                    <Progress value={stageIndex >= 0 ? ((stageIndex + 1) / PIPELINE.length) * 100 : 0} />
+                    <Progress
+                      aria-label={t.inference.pipeline}
+                      value={stageIndex >= 0 ? ((stageIndex + 1) / PIPELINE.length) * 100 : 0}
+                    />
                     {!incident && <p className="text-xs text-muted-foreground">{t.inference.openIncident}</p>}
                     {incident?.status === "pending_verification" && (
                       <div className="flex flex-wrap gap-2 pt-1">
                         <Button
                           size="sm"
-                          className="h-11 flex-1 sm:h-8"
+                          className="h-11 flex-1 text-sm sm:h-8"
                           onClick={() => act("verify", () => verify(incident.id, true))}
                           disabled={busy !== null}
                         >
@@ -491,7 +527,7 @@ export default function App() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-11 flex-1 sm:h-8"
+                          className="h-11 flex-1 text-sm sm:h-8"
                           onClick={() => act("verify", () => verify(incident.id, false))}
                           disabled={busy !== null}
                         >
@@ -509,7 +545,7 @@ export default function App() {
 
                   {incident?.status === "verified" && (
                     <form
-                      className="flex flex-col gap-3 rounded-xl bg-white/40 p-3 ring-1 ring-white/60"
+                      className="flex flex-col gap-3 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12"
                       onSubmit={(e) => {
                         e.preventDefault()
                         void act("info", () =>
@@ -518,7 +554,7 @@ export default function App() {
                       }}
                     >
                       <div>
-                        <p className="text-sm font-medium">{t.inference.suspectDetails}</p>
+                        <h3 className="text-sm font-semibold">{t.inference.suspectDetails}</h3>
                         <p className="mt-0.5 text-xs text-muted-foreground">{t.inference.suspectHelp}</p>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2 desk:grid-cols-1">
@@ -530,6 +566,7 @@ export default function App() {
                             onChange={(e) => setSuspectName(e.target.value)}
                             placeholder={t.inference.fullNamePlaceholder}
                             autoComplete="off"
+                            className="text-center"
                           />
                         </div>
                         <div className="grid gap-1.5">
@@ -542,7 +579,7 @@ export default function App() {
                             inputMode="numeric"
                             autoComplete="off"
                             dir="ltr"
-                            className="font-mono"
+                            className="text-center font-mono"
                           />
                         </div>
                       </div>
@@ -555,6 +592,7 @@ export default function App() {
                           placeholder={t.inference.notesPlaceholder}
                           autoComplete="off"
                           dir="auto"
+                          className="text-center"
                         />
                       </div>
                       <Button
@@ -586,7 +624,9 @@ export default function App() {
                   <TabsTrigger value="record">{t.report.record}</TabsTrigger>
                   <TabsTrigger value="narrative">{t.report.narrative}</TabsTrigger>
                 </TabsList>
-                <TabsContent value="record" className="min-h-0">
+                {/* Base UI makes each tab panel a tab stop, as the tabs pattern expects; the shadcn panel
+                    removes its outline, so the ring is put back here */}
+                <TabsContent value="record" className="min-h-0 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
                   <ScrollArea className="desk:h-full">
                     <Table>
                       <TableBody>
@@ -610,7 +650,7 @@ export default function App() {
                     </Table>
                   </ScrollArea>
                 </TabsContent>
-                <TabsContent value="narrative" className="min-h-0">
+                <TabsContent value="narrative" className="min-h-0 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
                   <ScrollArea className="h-72 desk:h-full">
                     <p dir="auto" className="whitespace-pre-wrap pe-3 text-sm leading-relaxed text-muted-foreground">
                       {toPlainText(incident?.report_summary)}
@@ -619,9 +659,11 @@ export default function App() {
                 </TabsContent>
               </Tabs>
             ) : (
-              <div className="grid flex-1 place-items-center py-10 text-center text-sm text-muted-foreground desk:py-0">
-                {t.report.empty}
-              </div>
+              <Placeholder
+                art={<ReportIllustration className="h-24 w-auto desk:h-20" />}
+                title={t.report.emptyTitle}
+                body={t.report.empty}
+              />
             )}
           </SectionShell>
 
@@ -640,53 +682,71 @@ export default function App() {
             }
             className="desk:col-start-2 desk:row-start-2"
           >
-            <dl className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-white/40 p-3 ring-1 ring-white/60">
-              <div className="col-span-2 min-w-0">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.authority}</dt>
-                <dd className="truncate text-sm" title={incident?.authority_name ?? undefined}>
-                  <bdi>{incident?.authority_name ?? "—"}</bdi>
-                </dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.number}</dt>
-                <dd dir="ltr" className="truncate text-start font-mono text-sm tabular-nums">
-                  {incident?.authority_phone ?? "—"}
-                </dd>
-              </div>
-              <div className="min-w-0">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.callSid}</dt>
-                <dd className="truncate font-mono text-sm" title={incident?.call_sid ?? undefined}>
-                  {incident?.call_sid ?? "—"}
-                </dd>
-              </div>
-            </dl>
-            <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
-              <div className="flex shrink-0 items-center justify-between gap-2 text-xs">
-                <span className="font-medium">{t.call.transcript}</span>
-                <span className="flex items-center gap-1.5 text-muted-foreground">
-                  <StatusDot tone={live ? "done" : "idle"} />
-                  {live ? t.call.connected : t.call.disconnected}
-                </span>
-              </div>
-              <ScrollArea className="h-56 desk:h-auto desk:min-h-0 desk:flex-1">
-                {transcript.length ? (
-                  <div className="flex flex-col gap-3 pe-3">
-                    {transcript.map((line, i) => (
-                      <div key={i} className="flex flex-col gap-1">
-                        <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground">
-                          {t.call.role(line.role)}
-                        </span>
-                        <p dir="auto" className="text-sm leading-relaxed">
-                          {line.text}
-                        </p>
-                      </div>
-                    ))}
+            {incident ? (
+              <>
+                <dl className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12">
+                  <div className="col-span-2 min-w-0">
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.authority}</dt>
+                    <dd className="truncate text-sm" title={incident?.authority_name ?? undefined}>
+                      <bdi>{incident?.authority_name ?? "—"}</bdi>
+                    </dd>
                   </div>
-                ) : (
-                  <p className="py-8 text-center text-sm text-muted-foreground">{t.call.empty}</p>
-                )}
-              </ScrollArea>
-            </div>
+                  <div className="min-w-0">
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.number}</dt>
+                    {/* The number is isolated inline rather than setting dir on the dd, which would flip the
+                        cell's alignment and push the number against the next column in Arabic. */}
+                    <dd className="truncate text-sm">
+                      <span dir="ltr" className="font-mono tabular-nums">
+                        {incident?.authority_phone ?? "—"}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.callSid}</dt>
+                    <dd className="truncate font-mono text-sm" title={incident?.call_sid ?? undefined}>
+                      {incident?.call_sid ?? "—"}
+                    </dd>
+                  </div>
+                </dl>
+                <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
+                  <div className="flex shrink-0 items-center justify-between gap-2 text-xs">
+                    <h3 className="font-semibold">{t.call.transcript}</h3>
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      <StatusDot tone={live ? "done" : "idle"} />
+                      {live ? t.call.connected : t.call.disconnected}
+                    </span>
+                  </div>
+                  {transcript.length ? (
+                    <ScrollArea className="h-56 desk:h-auto desk:min-h-0 desk:flex-1">
+                      <div className="flex flex-col gap-3 pe-3">
+                        {transcript.map((line, i) => (
+                          <div key={i} className="flex flex-col gap-1">
+                            <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground rtl:font-sans">
+                              {t.call.role(line.role)}
+                            </span>
+                            <p dir="auto" className="text-sm leading-relaxed">
+                              {line.text}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <Placeholder
+                      art={<CallIllustration className="h-24 w-auto desk:h-20" />}
+                      title={t.call.emptyTitle}
+                      body={t.call.empty}
+                    />
+                  )}
+                </div>
+              </>
+            ) : (
+              <Placeholder
+                art={<CallIllustration className="h-24 w-auto desk:h-20" />}
+                title={t.call.emptyTitle}
+                body={t.call.empty}
+              />
+            )}
           </SectionShell>
 
           {/* 05 JUDGMENT */}
@@ -704,82 +764,88 @@ export default function App() {
             }
             className="desk:col-start-3 desk:row-start-2"
           >
-            <div className="flex shrink-0 flex-col gap-1.5 rounded-xl bg-white/40 p-3 ring-1 ring-white/60">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.decision}</p>
-              {dispatch ? (
-                <>
-                  <div className="flex items-center gap-2">
-                    <StatusDot tone={dispatch.dispatch_confirmed ? "done" : "alert"} />
-                    <span className="text-sm font-medium">
-                      {dispatch.dispatch_confirmed ? t.judgment.dispatchConfirmed : t.judgment.dispatchNotConfirmed}
-                    </span>
-                  </div>
-                  {dispatch.authority_statement && (
-                    <p dir="auto" className="text-sm leading-relaxed">
-                      “{dispatch.authority_statement}”
-                    </p>
+            {incident ? (
+              <>
+                <div className="flex shrink-0 flex-col gap-1.5 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12">
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.decision}</h3>
+                  {dispatch ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <StatusDot tone={dispatch.dispatch_confirmed ? "done" : "alert"} />
+                        <span className="text-sm font-medium">
+                          {dispatch.dispatch_confirmed ? t.judgment.dispatchConfirmed : t.judgment.dispatchNotConfirmed}
+                        </span>
+                      </div>
+                      {dispatch.authority_statement && (
+                        <p dir="auto" className="text-sm leading-relaxed">
+                          “{dispatch.authority_statement}”
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">{t.judgment.noDecision}</p>
                   )}
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">{t.judgment.noDecision}</p>
-              )}
-            </div>
-            <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
-              <p className="shrink-0 text-xs font-medium">{t.judgment.reasoning}</p>
-              <ScrollArea className="desk:min-h-0 desk:flex-1">
-                {incident ? (
-                  <div className="flex flex-col gap-2.5 pe-3 text-sm">
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.detection}</p>
-                      <p className="mt-0.5">
-                        <Emphasised
-                          parts={t.judgment.detectionBody(
-                            t.detectionClass(incident.detection_class ?? ""),
-                            `${confidencePct}%`,
-                          )}
-                        />
-                      </p>
+                </div>
+                <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
+                  <h3 className="shrink-0 text-xs font-semibold">{t.judgment.reasoning}</h3>
+                  <ScrollArea className="desk:min-h-0 desk:flex-1">
+                    <div className="flex flex-col gap-2.5 pe-3 text-sm">
+                      <div>
+                        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.detection}</h4>
+                        <p className="mt-0.5">
+                          <Emphasised
+                            parts={t.judgment.detectionBody(
+                              t.detectionClass(incident.detection_class ?? ""),
+                              `${confidencePct}%`,
+                            )}
+                          />
+                        </p>
+                      </div>
+                      <Separator />
+                      <div>
+                        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.verification}</h4>
+                        <p className="mt-0.5">
+                          {incident.verification_status === "confirmed"
+                            ? t.judgment.verifiedBy(incident.employee_name ?? t.judgment.theEmployee)
+                            : t.judgment.notVerified}
+                        </p>
+                      </div>
+                      <Separator />
+                      <div>
+                        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.routing}</h4>
+                        <p className="mt-0.5">
+                          <Emphasised
+                            parts={t.judgment.routingBody(
+                              report?.severity ? t.severity(report.severity) : "—",
+                              incident.authority_name ?? "—",
+                            )}
+                          />
+                        </p>
+                      </div>
+                      {report?.recommended_action && (
+                        <>
+                          <Separator />
+                          <div>
+                            <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {t.judgment.recommendedAction}
+                            </h4>
+                            <p dir="auto" className="mt-0.5 leading-relaxed">
+                              {toPlainText(report.recommended_action)}
+                            </p>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <Separator />
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.verification}</p>
-                      <p className="mt-0.5">
-                        {incident.verification_status === "confirmed"
-                          ? t.judgment.verifiedBy(incident.employee_name ?? t.judgment.theEmployee)
-                          : t.judgment.notVerified}
-                      </p>
-                    </div>
-                    <Separator />
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">{t.judgment.routing}</p>
-                      <p className="mt-0.5">
-                        <Emphasised
-                          parts={t.judgment.routingBody(
-                            report?.severity ? t.severity(report.severity) : "—",
-                            incident.authority_name ?? "—",
-                          )}
-                        />
-                      </p>
-                    </div>
-                    {report?.recommended_action && (
-                      <>
-                        <Separator />
-                        <div>
-                          <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                            {t.judgment.recommendedAction}
-                          </p>
-                          <p dir="auto" className="mt-0.5 leading-relaxed">
-                            {toPlainText(report.recommended_action)}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <p className="py-8 text-center text-sm text-muted-foreground">{t.judgment.empty}</p>
-                )}
-              </ScrollArea>
-            </div>
+                  </ScrollArea>
+                </div>
+              </>
+            ) : (
+              <Placeholder
+                art={<JudgmentIllustration className="h-24 w-auto desk:h-20" />}
+                title={t.judgment.emptyTitle}
+                body={t.judgment.empty}
+              />
+            )}
           </SectionShell>
 
           <footer className="border-t border-border/60 pt-6 text-center text-xs text-muted-foreground desk:hidden">

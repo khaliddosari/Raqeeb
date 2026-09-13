@@ -44,6 +44,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* One step up from Tailwind's defaults (12, 14, 16px) for legibility on a console screen.
+   Line heights are ratios, so they scale with these. */
+@theme {
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.0625rem;
+}
+
 /* Single-screen console layout. Width alone is not enough: a wide but short window
    would crush a viewport-locked grid, so it also needs the height to hold two rows. */
 @custom-variant desk {
@@ -185,6 +193,43 @@
     @apply font-sans;
     }
 }
+
+/* Thmanyah Sans's optional OpenType features, reserved for headings, sub-headings and buttons so
+   body text and data keep the plain letterforms and stay easy to read:
+   ss01 and swsh  Arabic swash letterforms, plus the single-storey a and g (ss01, ss08, salt)
+   ss03 to ss07   five alternate fatha shapes; they compete for the same mark, so the first wins
+   dlig           discretionary ligatures
+   frac           1/2, 1/4 and 3/4 as fraction glyphs
+   Anything else that reads as a button, such as the file picker's chip, opts in with font-ornate. */
+h1, h2, h3, h4,
+button,
+[data-slot="button"],
+[data-slot="tabs-trigger"],
+[data-slot="empty-title"] {
+  font-feature-settings: "ss01", "ss03", "ss04", "ss05", "ss06", "ss07", "ss08", "salt", "swsh", "dlig", "frac";
+}
+
+@utility font-ornate {
+  font-feature-settings: "ss01", "ss03", "ss04", "ss05", "ss06", "ss07", "ss08", "salt", "swsh", "dlig", "frac";
+}
+
+/* A placeholder's own box, once it is a size container at desk, too short for everything in it. */
+@custom-variant box-short {
+  @container placeholder (max-height: 11rem) {
+    @slot;
+  }
+}
+@custom-variant box-tiny {
+  @container placeholder (max-height: 5.5rem) {
+    @slot;
+  }
+}
+
+/* The empty scanner's sweep, top of the bag to the bottom and back. */
+@keyframes raqeeb-scan {
+  0%, 100% { transform: translateY(-16px); }
+  50% { transform: translateY(28px); }
+}
 @layer base {
   html {
     scroll-behavior: smooth;
@@ -225,29 +270,29 @@
 --------------------------------------------------------------------------- */
 :root {
   --background: oklch(0.975 0.01 250);
-  --foreground: oklch(0.22 0.035 258);
+  --foreground: oklch(0.16 0.045 258);
 
-  --card: oklch(1 0 0 / 0.48);
-  --card-foreground: oklch(0.22 0.035 258);
+  --card: oklch(1 0 0 / 0.66);
+  --card-foreground: oklch(0.16 0.045 258);
   --popover: oklch(0.99 0.005 250 / 0.9);
-  --popover-foreground: oklch(0.22 0.035 258);
+  --popover-foreground: oklch(0.16 0.045 258);
 
-  --primary: oklch(0.33 0.095 262);
+  --primary: oklch(0.3 0.105 262);
   --primary-foreground: oklch(0.98 0.008 250);
 
-  --secondary: oklch(0.96 0.015 250 / 0.7);
-  --secondary-foreground: oklch(0.3 0.07 260);
+  --secondary: oklch(0.92 0.03 252 / 0.9);
+  --secondary-foreground: oklch(0.25 0.09 262);
 
-  --muted: oklch(0.95 0.014 250 / 0.55);
-  --muted-foreground: oklch(0.48 0.035 258);
+  --muted: oklch(0.94 0.018 250 / 0.7);
+  --muted-foreground: oklch(0.36 0.045 258);
 
-  --accent: oklch(0.93 0.032 252 / 0.75);
-  --accent-foreground: oklch(0.28 0.08 262);
+  --accent: oklch(0.91 0.04 252 / 0.85);
+  --accent-foreground: oklch(0.24 0.09 262);
 
-  --destructive: oklch(0.55 0.2 25);
+  --destructive: oklch(0.5 0.2 25);
 
-  --border: oklch(0.55 0.05 258 / 0.16);
-  --input: oklch(0.55 0.05 258 / 0.22);
+  --border: oklch(0.5 0.06 258 / 0.26);
+  --input: oklch(0.5 0.06 258 / 0.38);
   --ring: oklch(0.45 0.1 260);
 
   --radius: 0.9rem;
