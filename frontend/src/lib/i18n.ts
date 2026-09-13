@@ -38,19 +38,23 @@ const en = {
   dismiss: "Click to dismiss",
   footer: "Raqeeb · screening and response for government and private security",
 
-  // detection classes, severities and pipeline states come from the backend as codes
+  // detection classes, severities, pipeline states, agencies and checkpoints come from the
+  // backend as codes
   detectionClass: identity,
   severity: identity,
   status: identity,
+  location: identity,
+  agency: (key: string) => ({ police: "Police", airport_security: "Airport Security" })[key] ?? key,
 
   preview: {
     title: "Detection preview",
     caption: "The trained detector tracking prohibited items across a belt clip, frame by frame.",
     status: "Live loop",
+    paused: "Paused",
     pause: "Pause preview",
     play: "Play preview",
     description:
-      "Built for government and private security agencies. A YOLOv8-OBB model flags prohibited items in X-ray baggage scans, an employee verifies the find on the spot, and a voice agent writes the report, routes it to the responsible authority and phones them to request dispatch.",
+      "Built for government and private security agencies. A YOLOv8-OBB model flags five classes of prohibited item in X-ray baggage scans: guns, knives, pliers, scissors and wrenches. An employee verifies the find on the spot, then a voice agent writes the report and calls the right authority: the police for guns and knives, airport security for the tools.",
   },
 
   inference: {
@@ -58,8 +62,14 @@ const en = {
     caption:
       "Upload any X-ray frame, or run the bundled one. The model returns an annotated render and the flagged class, which starts an incident.",
     awaiting: "awaiting frame",
+    analysing: "analysing",
+    failed: "failed",
     employee: "Employee",
-    employeeId: "Employee ID",
+    employeeNumber: "Employee number",
+    employeeNumberPlaceholder: "05X XXX XXXX",
+    employeeNumberHelp: "Saudi mobile. The dispatch call rings this number.",
+    employeeNumberInvalid: "Enter a Saudi mobile number, such as 0551234567.",
+    location: "Location",
     frame: "Frame image",
     chooseFile: "Choose file",
     noFile: "No file chosen",
@@ -75,6 +85,7 @@ const en = {
     annotatedAlt: "Annotated detection",
     selectedAlt: "Selected frame",
     confidence: (pct: string) => `${pct}% confidence`,
+    routesTo: "Routes to",
     pipeline: "Pipeline",
     openIncident: "Run a detection to open an incident.",
     confirm: "Confirm threat",
@@ -98,6 +109,8 @@ const en = {
     title: "Incident report",
     caption: "Generated from the verified detection, then routed to the responsible authority.",
     generated: "generated",
+    generating: "generating",
+    sendFailed: "delivery failed",
     pending: "pending",
     record: "Record",
     narrative: "Narrative",
@@ -110,6 +123,7 @@ const en = {
     suspectId: "Suspect ID",
     employee: "Employee",
     notes: "Notes",
+    notified: "Notified",
     emptyTitle: "No report yet",
     empty: "Run a detection and confirm it to generate one.",
   },
@@ -135,6 +149,7 @@ const en = {
     title: "Judgment",
     caption: "Why the system acted as it did, and what the authority decided.",
     dispatchConfirmedPill: "dispatch confirmed",
+    notConfirmedPill: "not confirmed",
     awaitingDecision: "awaiting decision",
     pending: "pending",
     decision: "Authority decision",
@@ -198,6 +213,20 @@ const AR_STATUS: Record<string, string> = {
   false_positive: "إنذار خاطئ",
 }
 
+const AR_LOCATIONS: Record<string, string> = {
+  "Terminal 1": "الصالة 1",
+  "Terminal 2": "الصالة 2",
+  "Terminal 3": "الصالة 3",
+  "Terminal 4": "الصالة 4",
+  "Terminal 5": "الصالة 5",
+  "Private Aviation Terminal": "صالة الطيران الخاص",
+}
+
+const AR_AGENCIES: Record<string, string> = {
+  police: "الشرطة",
+  airport_security: "أمن المطار",
+}
+
 const AR_ROLES: Record<string, string> = {
   assistant: "الوكيل",
   authority: "الجهة",
@@ -211,7 +240,7 @@ const ar: Dict = {
   switchTo: "English",
   switchToLang: "en",
   switchToLabel: "التبديل إلى الإنجليزية",
-  timeZone: "بتوقيت الرياض",
+  timeZone: "بتوقيت السعودية",
   team: "الفريق",
   onLinkedIn: (name: string) => `${name} على لينكدإن`,
   dismiss: "انقر للإغلاق",
@@ -220,15 +249,18 @@ const ar: Dict = {
   detectionClass: lookup(AR_CLASSES),
   severity: lookup(AR_SEVERITY),
   status: lookup(AR_STATUS),
+  location: lookup(AR_LOCATIONS),
+  agency: lookup(AR_AGENCIES),
 
   preview: {
     title: "معاينة الكشف",
     caption: "النموذج المدرَّب يتتبع المواد المحظورة على سير الأمتعة إطارًا بإطار.",
     status: "عرض حي",
+    paused: "متوقف مؤقتًا",
     pause: "إيقاف المعاينة مؤقتًا",
     play: "تشغيل المعاينة",
     description:
-      "مصمَّم للجهات الأمنية الحكومية والخاصة. يرصد نموذج YOLOv8-OBB المواد المحظورة في صور الأشعة السينية للأمتعة، ويتحقق منها الموظف ميدانيًا، ثم يتولى وكيل صوتي كتابة البلاغ وتوجيهه إلى الجهة المختصة والاتصال بها لطلب إرسال فريق.",
+      "مصمَّم للجهات الأمنية الحكومية والخاصة. يرصد نموذج YOLOv8-OBB خمس فئات من المواد المحظورة في صور الأشعة السينية للأمتعة: الأسلحة النارية والسكاكين والكماشات والمقصات ومفاتيح الربط. يتحقق منها الموظف ميدانيًا، ثم يكتب وكيل صوتي البلاغ ويتصل بالجهة المختصة: الشرطة للأسلحة النارية والسكاكين، وأمن المطار للأدوات.",
   },
 
   inference: {
@@ -236,8 +268,14 @@ const ar: Dict = {
     caption:
       "ارفع أي صورة أشعة سينية أو شغّل الصورة التجريبية، فيعيد النموذج صورة موسومة والفئة المرصودة، وتُفتح بذلك حادثة.",
     awaiting: "بانتظار صورة",
+    analysing: "جارٍ التحليل",
+    failed: "تعذّر الكشف",
     employee: "الموظف",
-    employeeId: "الرقم الوظيفي",
+    employeeNumber: "رقم الموظف",
+    employeeNumberPlaceholder: "05X XXX XXXX",
+    employeeNumberHelp: "رقم جوال سعودي، ويُوجَّه إليه اتصال الإبلاغ.",
+    employeeNumberInvalid: "أدخل رقم جوال سعوديًا، مثل 0551234567.",
+    location: "الموقع",
     frame: "صورة الفحص",
     chooseFile: "اختيار ملف",
     noFile: "لم يُختر ملف",
@@ -254,6 +292,7 @@ const ar: Dict = {
     selectedAlt: "الصورة المختارة",
     // Isolated: after Arabic letters, bidi rules would otherwise move the percent sign to the far side.
     confidence: (pct: string) => `نسبة الثقة \u2066${pct}%\u2069`,
+    routesTo: "يُحال إلى",
     pipeline: "الخط الزمني للبلاغ",
     openIncident: "شغّل الكشف لفتح حادثة.",
     confirm: "تأكيد التهديد",
@@ -276,6 +315,8 @@ const ar: Dict = {
     title: "كرت البلاغ",
     caption: "يُنشأ من الكشف المُتحقَّق منه، ثم يُوجَّه إلى الجهة المختصة.",
     generated: "أُنشئ",
+    generating: "جارٍ الإنشاء",
+    sendFailed: "تعذّر الإرسال",
     pending: "قيد الانتظار",
     record: "السجل",
     narrative: "السرد",
@@ -288,6 +329,7 @@ const ar: Dict = {
     suspectId: "هوية المشتبه به",
     employee: "الموظف",
     notes: "الملاحظات",
+    notified: "الجهة المُبلَّغة",
     emptyTitle: "لا يوجد بلاغ بعد",
     empty: "شغّل الكشف وأكّده لإنشاء بلاغ.",
   },
@@ -313,6 +355,7 @@ const ar: Dict = {
     title: "التقييم",
     caption: "لماذا تصرّف النظام على هذا النحو، وماذا قررت الجهة.",
     dispatchConfirmedPill: "تأكّد الإرسال",
+    notConfirmedPill: "لم يتأكد",
     awaitingDecision: "بانتظار القرار",
     pending: "قيد الانتظار",
     decision: "قرار الجهة",

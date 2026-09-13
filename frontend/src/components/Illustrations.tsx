@@ -38,6 +38,31 @@ export function ScanIllustration({ className }: Props) {
   )
 }
 
+// The incident timeline before anything has happened: five stages on a rail, none reached yet,
+// the first one ringed as the next to start.
+export function TimelineIllustration({ className }: Props) {
+  const stops = [22, 56, 90, 124, 158]
+  return (
+    <svg viewBox="0 0 180 70" fill="none" aria-hidden="true" className={className}>
+      <path d="M22 26H158" strokeWidth="2" strokeDasharray="3 5" strokeLinecap="round" className="stroke-primary/25" />
+      {stops.map((x, i) => (
+        <g key={x}>
+          {i === 0 ? (
+            <>
+              <circle cx={x} cy="26" r="11" strokeWidth="1.5" className="fill-white/80 stroke-primary/40" />
+              <circle cx={x} cy="26" r="4.5" className="fill-primary/70" />
+            </>
+          ) : (
+            <circle cx={x} cy="26" r="8" strokeWidth="2" className="fill-white/80 stroke-primary/25" />
+          )}
+          <rect x={x - 13} y="46" width="26" height="4" rx="2" className={i === 0 ? "fill-primary/35" : "fill-primary/12"} />
+          <rect x={x - 8} y="55" width="16" height="3.5" rx="1.75" className="fill-primary/10" />
+        </g>
+      ))}
+    </svg>
+  )
+}
+
 // A filed report: a stacked sheet with a title bar, text lines, a record table and a seal.
 export function ReportIllustration({ className }: Props) {
   return (

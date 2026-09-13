@@ -1,9 +1,16 @@
 import { DirectionProvider } from "@base-ui/react/direction-provider"
-import { Pause as PauseIcon, Play as PlayIcon } from "lucide-react"
+import { MapPin, Pause as PauseIcon, Play as PlayIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { CallIllustration, JudgmentIllustration, ReportIllustration, ScanIllustration } from "@/components/Illustrations"
+import { AgencyMark } from "@/components/AgencyMark"
+import {
+  CallIllustration,
+  JudgmentIllustration,
+  ReportIllustration,
+  ScanIllustration,
+  TimelineIllustration,
+} from "@/components/Illustrations"
 import { Logo } from "@/components/Logo"
-import { SectionShell } from "@/components/SectionShell"
+import { SectionShell, StatusPill, type Tone } from "@/components/SectionShell"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
@@ -26,12 +34,14 @@ import {
   type Incident,
   type MonitorEvent,
 } from "@/lib/api"
+import { isAgency } from "@/lib/agency"
 import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
+import { CHECKPOINT_LOCATIONS, normalizeSaudiMobile, type CheckpointLocation } from "@/lib/intake"
 import { toPlainText } from "@/lib/plaintext"
 
-// English names follow each person's LinkedIn spelling; the Arabic spellings are their own.
+// Each person's own spelling, in both languages.
 const TEAM: { name: Record<Lang, string>; url: string }[] = [
-  { name: { en: "Khalid Al-Dosari", ar: "خالد آل دوسري" }, url: "https://www.linkedin.com/in/khalid-al-dosari/" },
+  { name: { en: "Khalid Al Dosari", ar: "خالد آل دوسري" }, url: "https://www.linkedin.com/in/khalid-al-dosari/" },
   { name: { en: "Nawaf Alsharani", ar: "نواف الشهراني" }, url: "https://www.linkedin.com/in/nawaf-alsharani-a431b731a/" },
   { name: { en: "Yazeed Bin Shihah", ar: "يزيد بن شيحة" }, url: "https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/" },
   { name: { en: "Omar Al-Dhawyan", ar: "عمر الضويان" }, url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/" },
@@ -55,15 +65,24 @@ const SUSPECT_DEFAULTS = {
 
 const PIPELINE = ["detected", "pending_verification", "verified", "report_sent", "call_in_progress", "closed"]
 
-function StatusDot({ tone }: { tone: "idle" | "active" | "done" | "alert" }) {
-  const color =
-    tone === "done" ? "bg-emerald-600" : tone === "active" ? "bg-amber-600" : tone === "alert" ? "bg-red-600" : "bg-muted-foreground/40"
+function StatusDot({ tone }: { tone: Tone }) {
+  const color = { idle: "bg-slate-400", running: "bg-blue-600", done: "bg-green-600", malfunction: "bg-red-600" }[tone]
   return (
     <span className="relative flex size-2">
-      {tone === "active" && <span className={`absolute inline-flex size-full animate-ping rounded-full ${color} opacity-60`} />}
+      {tone === "running" && (
+        <span className={`absolute inline-flex size-full rounded-full ${color} opacity-60 motion-safe:animate-ping`} />
+      )}
       <span className={`relative inline-flex size-2 rounded-full ${color}`} />
     </span>
   )
+}
+
+// Where an incident's status sits on the four universal states.
+function pipelineTone(status: string | undefined): Tone {
+  if (!status || status === "false_positive") return "idle"
+  if (status === "report_send_failed" || status === "closed_unconfirmed") return "malfunction"
+  if (status === "closed") return "done"
+  return "running"
 }
 
 // Placeholder for a panel still waiting on the pipeline: artwork, a short heading and what fills it.
@@ -72,7 +91,7 @@ function StatusDot({ tone }: { tone: "idle" | "active" | "done" | "alert" }) {
 function Placeholder({ art, title, body }: { art: React.ReactNode; title: string; body: string }) {
   return (
     <div className="flex min-h-0 flex-col desk:flex-1 desk:@container-size desk:[container-name:placeholder]">
-      <Empty className="min-h-0 gap-2 overflow-hidden p-4 desk:p-2">
+      <Empty className="min-h-0 gap-2 overflow-hidden p-4 box-micro:hidden desk:p-2">
         <EmptyHeader className="gap-1.5">
           <EmptyMedia className="mb-1 text-primary box-short:hidden">{art}</EmptyMedia>
           <EmptyTitle role="heading" aria-level={3} className="text-sm font-semibold">
@@ -121,8 +140,10 @@ function Emphasised({ parts }: { parts: string[] }) {
 export default function App() {
   const [lang, setLang] = useState<Lang>(initialLang)
   const t = STRINGS[lang]
-  const [employeeName, setEmployeeName] = useState("Khalid Al-Dosari")
-  const [employeeId, setEmployeeId] = useState("EMP-4471")
+  const [employeeName, setEmployeeName] = useState("Khalid Al Dosari")
+  // Required: the employee's identifier on the report, and the mobile the dispatch call rings.
+  const [employeePhone, setEmployeePhone] = useState("")
+  const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [annotated, setAnnotated] = useState<string | null>(null)
@@ -189,6 +210,9 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incident?.id])
 
+  const phoneE164 = normalizeSaudiMobile(employeePhone)
+  const phoneInvalid = employeePhone.trim() !== "" && phoneE164 === null
+
   const onFile = (f: File | null) => {
     setFile(f)
     setAnnotated(null)
@@ -204,7 +228,7 @@ export default function App() {
     setSuspectId(SUSPECT_DEFAULTS.id)
     setSuspectNotes(SUSPECT_DEFAULTS.notes)
     try {
-      const res = await detect(file, employeeName, employeeId)
+      const res = await detect(file, employeeName, phoneE164, location)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -227,7 +251,7 @@ export default function App() {
       setFile(testFile)
       setPreviewUrl(TEST_IMAGE_URL)
       setAnnotated(null)
-      const res = await detect(testFile, employeeName, employeeId)
+      const res = await detect(testFile, employeeName, phoneE164, location)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -265,17 +289,51 @@ export default function App() {
   const dispatch = incident?.authority_response
   const report = incident?.report
   const confidencePct = ((incident?.detection_confidence ?? 0) * 100).toFixed(2)
+  const agency = incident && isAgency(incident.authority_agency) ? incident.authority_agency : null
+
+  // Each panel's pill, on the universal idle / running / done / malfunction scale.
+  const inferenceStatus: { label: string; tone: Tone } =
+    busy === "detect"
+      ? { label: t.inference.analysing, tone: "running" }
+      : incident
+        ? { label: t.detectionClass(incident.detection_class ?? ""), tone: "done" }
+        : error
+          ? { label: t.inference.failed, tone: "malfunction" }
+          : { label: t.inference.awaiting, tone: "idle" }
+  const reportStatus: { label: string; tone: Tone } = report
+    ? incident?.status === "report_send_failed"
+      ? { label: t.report.sendFailed, tone: "malfunction" }
+      : { label: t.report.generated, tone: "done" }
+    : busy === "info"
+      ? { label: t.report.generating, tone: "running" }
+      : { label: t.report.pending, tone: "idle" }
+  const callStatus: { label: string; tone: Tone } = incident?.call_sid
+    ? ["closed", "closed_unconfirmed"].includes(incident.status)
+      ? { label: t.call.ended, tone: "done" }
+      : { label: t.call.inProgress, tone: "running" }
+    : { label: t.call.noCall, tone: "idle" }
+  const judgmentStatus: { label: string; tone: Tone } = dispatch?.dispatch_confirmed
+    ? { label: t.judgment.dispatchConfirmedPill, tone: "done" }
+    : incident?.status === "closed_unconfirmed"
+      ? { label: t.judgment.notConfirmedPill, tone: "malfunction" }
+      : incident?.status === "false_positive"
+        ? { label: t.status("false_positive"), tone: "idle" }
+        : incident
+          ? { label: t.judgment.awaitingDecision, tone: "running" }
+          : { label: t.judgment.pending, tone: "idle" }
 
   return (
     <DirectionProvider direction={lang === "ar" ? "rtl" : "ltr"}>
       <div className="min-h-screen text-foreground desk:flex desk:h-dvh desk:flex-col desk:overflow-hidden">
-        <header className="sticky top-0 z-20 border-b border-primary/10 bg-background/65 backdrop-blur-xl backdrop-saturate-150 desk:static desk:shrink-0">
+        {/* Sticky only from lg: on a phone the header wraps to two rows of names and would pin a
+            third of the screen, so it scrolls away with the page there. */}
+        <header className="z-20 border-b border-primary/10 bg-background/65 backdrop-blur-xl backdrop-saturate-150 lg:sticky lg:top-0 desk:static desk:shrink-0">
           {/* From lg the header is three columns with equal outer tracks, so the team sits on the page's
               true centre rather than midway between a narrow brand and a wide clock. */}
           <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 lg:grid lg:grid-cols-[1fr_auto_1fr] desk:h-12 desk:max-w-[112rem] desk:py-0">
             <div className="flex min-w-0 items-center gap-2 lg:justify-self-start">
               <Logo className="size-8 drop-shadow-sm" />
-              <h1 className="text-base font-bold tracking-tight">{t.brand}</h1>
+              <h1 className="font-brand text-xl leading-none font-black">{t.brand}</h1>
             </div>
 
             {/* its own full-width row under the brand until there is room to sit inline */}
@@ -339,7 +397,7 @@ export default function App() {
             id="preview"
             title={t.preview.title}
             caption={t.preview.caption}
-            status={{ label: t.preview.status, tone: "active" }}
+            status={playing ? { label: t.preview.status, tone: "running" } : { label: t.preview.paused, tone: "idle" }}
             className="desk:col-start-1 desk:row-start-1"
           >
             <div className="relative overflow-hidden rounded-xl bg-black desk:min-h-0 desk:flex-1">
@@ -375,40 +433,83 @@ export default function App() {
             id="inference"
             title={t.inference.title}
             caption={t.inference.caption}
-            status={
-              incident
-                ? { label: t.detectionClass(incident.detection_class ?? ""), tone: "done" }
-                : { label: t.inference.awaiting, tone: "idle" }
-            }
+            status={inferenceStatus}
             className="desk:col-span-2 desk:col-start-2 desk:row-start-1"
           >
             <div className="grid gap-3 md:grid-cols-2 desk:min-h-0 desk:flex-1 desk:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)_minmax(0,1fr)] desk:grid-rows-[minmax(0,1fr)]">
               {/* input */}
               <ScrollArea className="desk:h-full desk:min-h-0">
-                <div className="flex flex-col gap-3 desk:p-1 desk:pe-3 desk-short:gap-2">
-                  <div className="grid gap-1.5">
+                <div className="flex flex-col gap-3 desk:gap-2 desk:p-1 desk:pe-3 desk-short:gap-1">
+                  <div className="grid gap-1.5 desk:gap-1">
                     <Label htmlFor="emp-name">{t.inference.employee}</Label>
                     <Input
                       id="emp-name"
                       value={employeeName}
                       onChange={(e) => setEmployeeName(e.target.value)}
-                      className="text-center"
+                      autoComplete="name"
+                      className="h-11 text-center desk:h-8"
                     />
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="emp-id">{t.inference.employeeId}</Label>
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label htmlFor="emp-phone">
+                      {t.inference.employeeNumber}
+                      <span aria-hidden="true" className="text-destructive">
+                        *
+                      </span>
+                    </Label>
                     <Input
-                      id="emp-id"
-                      value={employeeId}
-                      onChange={(e) => setEmployeeId(e.target.value)}
-                      className="text-center"
+                      id="emp-phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      dir="ltr"
+                      value={employeePhone}
+                      onChange={(e) => setEmployeePhone(e.target.value)}
+                      placeholder={t.inference.employeeNumberPlaceholder}
+                      required
+                      aria-invalid={phoneInvalid || undefined}
+                      aria-describedby="emp-phone-help"
+                      className="h-11 text-center font-mono tabular-nums desk:h-8"
                     />
+                    <p
+                      id="emp-phone-help"
+                      className={
+                        phoneInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground desk:sr-only"
+                      }
+                    >
+                      {phoneInvalid ? t.inference.employeeNumberInvalid : t.inference.employeeNumberHelp}
+                    </p>
                   </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor="frame">{t.inference.frame}</Label>
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label id="location-label" className="desk-short:sr-only">{t.inference.location}</Label>
+                    <Select value={location} onValueChange={(v) => v && setLocation(v as CheckpointLocation)}>
+                      <SelectTrigger
+                        aria-labelledby="location-label"
+                        className="w-full data-[size=default]:h-11 desk:data-[size=default]:h-8"
+                      >
+                        <SelectValue className="justify-center gap-1.5 text-center">
+                          {(value: string) => (
+                            <>
+                              <MapPin aria-hidden="true" className="size-3.5 text-primary" />
+                              {t.location(value)}
+                            </>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CHECKPOINT_LOCATIONS.map((value) => (
+                          <SelectItem key={value} value={value} className="min-h-10 desk:min-h-0">
+                            {t.location(value)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label htmlFor="frame" className="desk-short:sr-only">{t.inference.frame}</Label>
                     {/* The native picker's "Choose File / No file chosen" is browser chrome that follows the
-                        OS language, not the page. The real input stays for keyboard and screen readers;
-                        this label is only its visible, translated face. */}
+                        OS language, not the page. The real input stays for keyboard and screen readers, and
+                        announces the chosen file through frame-status; the pill is its visible face. */}
                     <input
                       id="frame"
                       type="file"
@@ -420,24 +521,27 @@ export default function App() {
                     <label
                       htmlFor="frame"
                       aria-hidden="true"
-                      className="flex h-8 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border border-input ps-1 pe-2.5 text-sm transition-colors hover:bg-white/40 peer-focus-visible:border-ring peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50"
+                      className="font-ornate flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-lg bg-secondary px-3 text-sm font-medium text-secondary-foreground ring-1 ring-primary/15 transition-colors hover:bg-accent peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 desk:h-8"
                     >
-                      <span className="font-ornate shrink-0 rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-                        {t.inference.chooseFile}
-                      </span>
-                      <span id="frame-status" dir="auto" className="min-w-0 flex-1 truncate text-center text-muted-foreground">
-                        {file ? file.name : t.inference.noFile}
-                      </span>
+                      <span className="truncate">{t.inference.chooseFile}</span>
                     </label>
+                    <span id="frame-status" className="sr-only">
+                      {file ? file.name : t.inference.noFile}
+                    </span>
                   </div>
-                  <Button onClick={runDetection} disabled={!file || busy !== null} className="w-full">
+                  <Button onClick={runDetection} disabled={!file || busy !== null || !phoneE164} className="h-11 w-full desk:h-8">
                     {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
                   </Button>
 
-                  {/* stacked with the image below on small screens; a thumbnail beside the button at desk */}
-                  <div className="flex flex-col gap-2 rounded-xl bg-white/55 p-2.5 ring-1 ring-primary/12 desk:flex-row-reverse desk:items-center">
+                  {/* the bundled frame: its thumbnail beside the button, at every size */}
+                  <div className="flex flex-row-reverse items-center gap-2.5 rounded-xl bg-white/55 p-2.5 ring-1 ring-primary/12 desk-short:p-2">
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                      <Button variant="secondary" onClick={runTestImage} disabled={busy !== null} className="w-full">
+                      <Button
+                        variant="secondary"
+                        onClick={runTestImage}
+                        disabled={busy !== null || !phoneE164}
+                        className="h-11 w-full desk:h-8"
+                      >
                         {busy === "detect" ? t.inference.runningTest : t.inference.runTest}
                       </Button>
                       <p className="text-xs text-muted-foreground desk:hidden">{t.inference.testCaption}</p>
@@ -445,14 +549,14 @@ export default function App() {
                     <button
                       type="button"
                       onClick={runTestImage}
-                      disabled={busy !== null}
+                      disabled={busy !== null || !phoneE164}
                       aria-label={t.inference.testAria}
-                      className="shrink-0 overflow-hidden rounded-lg ring-1 ring-primary/12 disabled:cursor-not-allowed desk:w-24 desk-short:w-20"
+                      className="w-24 shrink-0 overflow-hidden rounded-lg ring-1 ring-primary/12 disabled:cursor-not-allowed desk-short:w-16"
                     >
                       <img
                         src={TEST_IMAGE_URL}
                         alt={t.inference.testAlt}
-                        className="block w-full cursor-pointer bg-white object-cover transition hover:opacity-90 desk:aspect-3/2"
+                        className="block aspect-3/2 w-full cursor-pointer bg-white object-cover transition hover:opacity-90"
                       />
                     </button>
                   </div>
@@ -492,9 +596,16 @@ export default function App() {
                   )}
                 </div>
                 {incident?.detection_class && (
-                  <div className="flex shrink-0 items-center gap-3 border-t border-primary/10 px-3 py-2">
+                  <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-primary/10 px-3 py-2">
                     <Badge className="font-mono text-xs uppercase rtl:font-sans">{t.detectionClass(incident.detection_class)}</Badge>
                     <span className="text-xs tabular-nums text-muted-foreground">{t.inference.confidence(confidencePct)}</span>
+                    {agency && (
+                      <span className="ms-auto flex items-center gap-1.5 text-xs">
+                        <span className="text-muted-foreground">{t.inference.routesTo}</span>
+                        <AgencyMark agency={agency} className="size-6" />
+                        <span className="font-semibold">{t.agency(agency)}</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -505,15 +616,18 @@ export default function App() {
                   <div className="flex flex-col gap-2 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12">
                     <div className="flex items-center justify-between gap-2 text-xs">
                       <h3 className="font-semibold">{t.inference.pipeline}</h3>
-                      <span className="truncate font-mono uppercase text-muted-foreground rtl:font-sans">
-                        {t.status(incident?.status ?? "idle")}
-                      </span>
+                      <StatusPill label={t.status(incident?.status ?? "idle")} tone={pipelineTone(incident?.status)} />
                     </div>
                     <Progress
                       aria-label={t.inference.pipeline}
                       value={stageIndex >= 0 ? ((stageIndex + 1) / PIPELINE.length) * 100 : 0}
                     />
-                    {!incident && <p className="text-xs text-muted-foreground">{t.inference.openIncident}</p>}
+                    {!incident && (
+                      <div className="flex flex-col items-center gap-2 py-2 text-center">
+                        <TimelineIllustration className="w-full max-w-56 text-primary desk-short:max-w-40" />
+                        <p className="text-xs text-muted-foreground">{t.inference.openIncident}</p>
+                      </div>
+                    )}
                     {incident?.status === "pending_verification" && (
                       <div className="flex flex-wrap gap-2 pt-1">
                         <Button
@@ -615,12 +729,13 @@ export default function App() {
             id="report"
             title={t.report.title}
             caption={t.report.caption}
-            status={report ? { label: t.report.generated, tone: "done" } : { label: t.report.pending, tone: "idle" }}
+            status={reportStatus}
             className="desk:col-start-1 desk:row-start-2"
           >
             {report ? (
               <Tabs defaultValue="record" className="min-h-0 gap-2 desk:flex-1">
-                <TabsList className="h-11! shrink-0 desk:h-8!">
+                {/* the triggers fill the list minus its padding, so 52px here gives 44px tap targets */}
+                <TabsList className="h-13! shrink-0 desk:h-8!">
                   <TabsTrigger value="record">{t.report.record}</TabsTrigger>
                   <TabsTrigger value="narrative">{t.report.narrative}</TabsTrigger>
                 </TabsList>
@@ -633,7 +748,18 @@ export default function App() {
                         <Field label={t.report.incident} value={report.incident_id} mono />
                         <Field label={t.report.detectedItem} value={t.detectionClass(report.detected_item)} />
                         <Field label={t.report.confidence} value={report.yolo_confidence} mono />
-                        <Field label={t.report.location} value={<bdi>{report.location}</bdi>} />
+                        <Field label={t.report.location} value={<bdi>{t.location(report.location)}</bdi>} />
+                        {agency && (
+                          <Field
+                            label={t.report.notified}
+                            value={
+                              <span className="flex items-center gap-2">
+                                <AgencyMark agency={agency} className="size-6" />
+                                <span className="font-medium">{t.agency(agency)}</span>
+                              </span>
+                            }
+                          />
+                        )}
                         <Field
                           label={t.report.severity}
                           value={
@@ -673,13 +799,7 @@ export default function App() {
             id="call"
             title={t.call.title}
             caption={t.call.caption}
-            status={
-              incident?.call_sid
-                ? incident.status === "closed"
-                  ? { label: t.call.ended, tone: "done" }
-                  : { label: t.call.inProgress, tone: "active" }
-                : { label: t.call.noCall, tone: "idle" }
-            }
+            status={callStatus}
             className="desk:col-start-2 desk:row-start-2"
           >
             {incident ? (
@@ -687,8 +807,17 @@ export default function App() {
                 <dl className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12">
                   <div className="col-span-2 min-w-0">
                     <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.authority}</dt>
-                    <dd className="truncate text-sm" title={incident?.authority_name ?? undefined}>
-                      <bdi>{incident?.authority_name ?? "—"}</bdi>
+                    <dd className="mt-1 flex min-w-0 items-center gap-2.5">
+                      {agency && <AgencyMark agency={agency} className="size-9 desk:size-8" />}
+                      <span className="flex min-w-0 flex-col">
+                        {agency && <span className="text-sm font-semibold">{t.agency(agency)}</span>}
+                        <bdi
+                          className={agency ? "truncate text-xs text-muted-foreground" : "truncate text-sm"}
+                          title={incident?.authority_name ?? undefined}
+                        >
+                          {incident?.authority_name ?? "—"}
+                        </bdi>
+                      </span>
                     </dd>
                   </div>
                   <div className="min-w-0">
@@ -755,13 +884,7 @@ export default function App() {
             id="judgment"
             title={t.judgment.title}
             caption={t.judgment.caption}
-            status={
-              dispatch?.dispatch_confirmed
-                ? { label: t.judgment.dispatchConfirmedPill, tone: "done" }
-                : incident
-                  ? { label: t.judgment.awaitingDecision, tone: "active" }
-                  : { label: t.judgment.pending, tone: "idle" }
-            }
+            status={judgmentStatus}
             className="desk:col-start-3 desk:row-start-2"
           >
             {incident ? (
@@ -771,7 +894,7 @@ export default function App() {
                   {dispatch ? (
                     <>
                       <div className="flex items-center gap-2">
-                        <StatusDot tone={dispatch.dispatch_confirmed ? "done" : "alert"} />
+                        <StatusDot tone={dispatch.dispatch_confirmed ? "done" : "malfunction"} />
                         <span className="text-sm font-medium">
                           {dispatch.dispatch_confirmed ? t.judgment.dispatchConfirmed : t.judgment.dispatchNotConfirmed}
                         </span>

@@ -46,9 +46,10 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is three tests, all passing, all driving the LangGraph workflow with mock
-providers. They cover the graph and nothing else: no route, no WebSocket, and none of the
-frontend is tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
+The test suite is 19 tests, all passing: four drive the LangGraph workflow with mock providers,
+and the rest cover the intake rules in `agent/intake.py` (which phone numbers and locations are
+accepted) and the class-to-agency routing. No route, no WebSocket, and none of the frontend is
+tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
 
 ## How the pieces fit
 
@@ -152,7 +153,10 @@ right-to-left layout, not translated labels.
   `main.tsx` before the first render, so a returning Arabic reader never sees an LTR flash.
   The choice is stored in `localStorage` under `raqeeb.lang`.
 - Team names switch to their Arabic spelling in Arabic mode. Both spellings live in `TEAM` in
-  `App.tsx`, not in the dictionary; the English ones match each person's LinkedIn.
+  `App.tsx`, not in the dictionary.
+- Checkpoint locations and agency names travel as English codes (`Terminal 3`, `police`) and
+  are translated only at display, through `t.location` and `t.agency`, so reports and calls
+  stay in one language whatever the operator is viewing.
 
 **Font.** Thmanyah Sans, loaded from `khaliddosari/thmanyah-fonts@v1` through jsDelivr in five
 weights. It covers Latin and Arabic, so it is the only UI font. The monospace stack keeps
@@ -160,8 +164,29 @@ system mono for ids and codes but lists Thmanyah before the generic fallback, so
 inside a mono label still renders in it. The font's optional OpenType features (Arabic swash
 letterforms, alternate fatha, discretionary ligatures, fractions) are on for headings (`h1` to
 `h4`), buttons, tabs and placeholder titles only, set in `index.css`; body text and data stay
-plain. Anything else that should read as a button opts in with the `font-ornate` class, so mark
-new sub-headings up as real `h3`/`h4` elements rather than styled paragraphs.
+plain. In Arabic the status pills and the team's names get them too. Anything else that should
+read as a button opts in with the `font-ornate` class, so mark new sub-headings up as real
+`h3`/`h4` elements rather than styled paragraphs. The Raqeeb wordmark alone uses Thmanyah Serif
+Display Black (`font-brand`), and only that one weight is fetched.
+
+**Status pills use the universal four.** Grey idle, blue running, green done, red malfunction,
+with a dot that repeats the state so colour is never the only cue. `StatusPill` and the `Tone`
+type are in `SectionShell.tsx`; `pipelineTone()` in `App.tsx` maps backend statuses onto them.
+Do not reintroduce amber for "waiting": waiting on the pipeline is running.
+
+**Intake: employee number and location.** The employee number is required and must be a Saudi
+mobile. It is the employee's identifier on the report and the number the dispatch call rings,
+replacing the agency's configured number for that incident (`call_phone` in the graph state,
+applied in `determine_authority_node`). The location picker offers Terminals 1 to 5 and the
+Private Aviation Terminal. Both are validated in `agent/intake.py`, which is the gate; the
+frontend copy in `lib/intake.ts` only lets the form explain itself early. Change the two
+together.
+
+**Agencies.** Guns and knives route to the police, pliers, scissors and wrenches to airport
+security, via the `agency` field in `config/authority_mapping.yaml`, surfaced to the dashboard
+as `authority_agency`. The agency's mark appears beside the detection, in the report and in the
+call panel. Official logos are not bundled: `components/AgencyMark.tsx` shows an icon badge
+until files are added under `public/authorities/` and their paths set there.
 
 **Branding and placeholders.** The logo is `components/Logo.tsx` (a shield holding an eye) and
 `public/favicon.svg`, deliberately free of any national, ministry or company emblem because the
@@ -169,8 +194,12 @@ product is pitched to government and private security agencies alike; keep new a
 in the same way. Panels waiting on the pipeline show line illustrations from
 `components/Illustrations.tsx` inside shadcn's `Empty`. At desk each placeholder is a size
 container that drops its artwork, then its description, when its box gets short, via the
-`box-short` and `box-tiny` variants in `index.css`, so an empty panel never scrolls. Text sizes are one step above Tailwind's defaults, set
-in an `@theme` block in `index.css`: `text-xs` is 13px, `text-sm` 15px and `text-base` 17px.
+`box-short`, `box-tiny` and `box-micro` variants in `index.css`, so an empty panel never
+scrolls. Text sizes are one step above Tailwind's defaults, set in an `@theme` block in
+`index.css`: `text-xs` is 13px, `text-sm` 15px and `text-base` 17px.
+
+**On phones** the header scrolls away instead of pinning its two rows of names, controls are
+44px tall below the desk layout, and input text stays at 17px so iOS does not zoom on focus.
 
 **You must build it before the backend can serve it.** `frontend/dist` is gitignored, so a
 fresh clone has no dashboard at all until you run `npm run build`. FastAPI mounts that
@@ -295,6 +324,15 @@ the project's Gemini key, and that quota has already run out once. After the Ope
 gets worse: reports bill the OpenAI account, and with live telephony every run places a real
 call billed per minute by both OpenAI Realtime and Twilio.
 
+**Deploy the backend before the frontend.** The dashboard now sends `employee_phone` and
+`location`; the Modal backend from before that change still requires `employee_id` and rejects
+every detection without it. Run `modal deploy` first, then let Vercel pick up the frontend.
+
+**With live telephony, the public site can ring any Saudi mobile.** The number typed into the
+dashboard is dialled by the voice agent. Validation limits it to Saudi mobiles, but anyone who
+finds the site could make it call someone else, on Yazeed's Twilio account. Gate it before
+switching telephony on: an allowlist of the team's numbers, or a demo passcode.
+
 **The local `.env` carries a billed Twilio token.** Calls placed with it charge Yazeed's
 account. Move it between machines privately (USB or an encrypted note), never through chat or
 email, and never commit it; `.env` is gitignored and must stay that way.
@@ -350,6 +388,11 @@ against an empty key. None of it is in `tests/`, so nothing stops a regression, 
 this code exists to prevent was live in the repo once already (see `1f9ffa4`). The four cases
 are straightforward to drive against `_verify_signature` directly, no live call needed.
 
+**Add the agencies' official logos** under `frontend/public/authorities/` and point `AGENCIES`
+in `AgencyMark.tsx` at them, once the team has artwork it is allowed to use.
+
+**Gate caller-supplied numbers** before live telephony is enabled on the public site (see Traps).
+
 **Finish the OpenAI switch.** In order:
 
 1. Get `OPENAI_API_KEY`, `OPENAI_PROJECT_ID` and `OPENAI_WEBHOOK_SECRET`, all from the same
@@ -377,7 +420,7 @@ selected.
 from Modal; the dashboard shows a placeholder until they finish. JPEG or WebP would cut that
 by an order of magnitude.
 
-**Add CI.** There is none. Three tests that nobody runs automatically will rot.
+**Add CI.** There is none. Tests that nobody runs automatically will rot.
 
 **Counting still lags association.** From the tracking benchmark: identities hold well, IDF1
 around 0.87, but the distinct-object count that a screening log would record is still off by a

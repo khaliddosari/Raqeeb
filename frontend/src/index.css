@@ -42,6 +42,16 @@
   font-display: swap;
 }
 
+/* Thmanyah Serif Display, Black only: it sets the Raqeeb wordmark and nothing else, so only the
+   one weight is fetched. Covers both "Raqeeb" and "رقيب". */
+@font-face {
+  font-family: "Thmanyah Serif Display";
+  src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahserifdisplay/woff2/thmanyahserifdisplay-Black.woff2") format("woff2");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* One step up from Tailwind's defaults (12, 14, 16px) for legibility on a console screen.
@@ -69,6 +79,7 @@
 
 @theme inline {
     --font-heading: var(--font-sans);
+    --font-brand: 'Thmanyah Serif Display', 'Thmanyah Sans', serif;
     --font-sans: 'Thmanyah Sans', system-ui, sans-serif;
     /* Mono stays for ids and codes. Thmanyah sits before the generic fallback so any Arabic
        inside a mono label falls through to it glyph by glyph, rather than to a system face. */
@@ -205,8 +216,16 @@ h1, h2, h3, h4,
 button,
 [data-slot="button"],
 [data-slot="tabs-trigger"],
-[data-slot="empty-title"] {
+[data-slot="empty-title"],
+/* in Arabic, status pills and the team's names get the full set too */
+html[lang="ar"] [data-slot="badge"],
+html[lang="ar"] header nav a {
   font-feature-settings: "ss01", "ss03", "ss04", "ss05", "ss06", "ss07", "ss08", "salt", "swsh", "dlig", "frac";
+}
+
+/* No double-tap-to-zoom wait on controls; pinch zoom stays available. */
+a, button, input, label, select, [role="tab"], [role="combobox"], [role="option"] {
+  touch-action: manipulation;
 }
 
 @utility font-ornate {
@@ -221,6 +240,11 @@ button,
 }
 @custom-variant box-tiny {
   @container placeholder (max-height: 5.5rem) {
+    @slot;
+  }
+}
+@custom-variant box-micro {
+  @container placeholder (max-height: 2.5rem) {
     @slot;
   }
 }

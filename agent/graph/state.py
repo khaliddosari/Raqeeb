@@ -28,6 +28,9 @@ class IncidentState(TypedDict, total=False):
     report_summary: str
 
     authority: dict[str, Any]
+    # The on-duty employee's mobile, when given: the dispatch call goes here instead of
+    # the authority's configured number.
+    call_phone: str
 
     call_sid: str
     authority_response: dict[str, Any]

@@ -69,11 +69,20 @@ def _sync_db(incident_id: str, state: dict[str, Any]) -> None:
 
 
 async def start_incident(
-    incident_id: str, image_path: str, *, employee_name: str, employee_id: str
+    incident_id: str,
+    image_path: str,
+    *,
+    employee_name: str,
+    employee_id: str,
+    location: str | None = None,
+    call_phone: str | None = None,
 ) -> dict[str, Any]:
-    """The on-duty employee (from their shift login) and the checkpoint's fixed location
-    are stamped onto the incident right here, before detection even runs -- the employee
-    only ever fills in the suspect's details, never re-types who or where they are."""
+    """The on-duty employee (from their shift login) and the checkpoint's location are
+    stamped onto the incident right here, before detection even runs -- the employee
+    only ever fills in the suspect's details, never re-types who or where they are.
+
+    location falls back to the configured checkpoint. call_phone, already validated and in
+    E.164, replaces the authority's number as the destination of the dispatch call."""
     config = thread_config(incident_id)
     initial_state = {
         "incident_id": incident_id,
@@ -81,11 +90,13 @@ async def start_incident(
         "employee_name": employee_name,
         "employee_id": employee_id,
         "incident_data": {
-            "location": settings.checkpoint_location,
+            "location": location or settings.checkpoint_location,
             "employee_name": employee_name,
             "employee_id": employee_id,
         },
     }
+    if call_phone:
+        initial_state["call_phone"] = call_phone
     result = await (await get_compiled_graph()).ainvoke(initial_state, config)
     _sync_db(incident_id, result)
     return {"state": result, "interrupt": _extract_interrupt(result)}

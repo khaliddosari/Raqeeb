@@ -46,6 +46,9 @@ class AuthorityCallResult(BaseModel):
 
 class AuthorityConfig(BaseModel):
     name: str
+    # Which real agency this is, independent of the unit named above; the dashboard uses it
+    # to show that agency's mark.
+    agency: Literal["police", "airport_security"] | None = None
     phone_number: str
     report_endpoint: str
     endpoint_type: Literal["webhook", "email", "api"] = "webhook"

@@ -122,6 +122,10 @@ async def generate_incident_report_node(state: IncidentState) -> dict[str, Any]:
 
 async def determine_authority_node(state: IncidentState) -> dict[str, Any]:
     authority = get_authority_for_class(state["detection_class"])
+    if state.get("call_phone"):
+        # The agency, its name and its report endpoint stay as mapped; only the number the
+        # call rings changes, to the employee's own mobile entered on the dashboard.
+        authority = authority.model_copy(update={"phone_number": state["call_phone"]})
     return {"authority": authority.model_dump(), "status": "authority_determined"}
 
 

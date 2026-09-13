@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 
 from agent.config import settings
 from agent.db import get_db
+from agent.authority_mapping import get_authority_for_class
 from agent.graph.runner import start_incident
+from agent.intake import normalize_saudi_mobile, validate_location
 from agent.models import Incident
 from agent.report import new_incident_id
 from agent.yolo_detector import NoDetectionError, YoloDetector
@@ -17,11 +19,31 @@ router = APIRouter(prefix="/api", tags=["detection"])
 
 
 @router.post("/detect")
-async def detect(image: UploadFile, employee_name: str = Form(...), employee_id: str = Form(...)):
+async def detect(
+    image: UploadFile,
+    employee_name: str = Form(...),
+    employee_id: str = Form(""),
+    employee_phone: str = Form(""),
+    location: str = Form(""),
+):
     """YOLO detection entrypoint. Saves the frame, runs the graph up to (and including)
     the employee_verification interrupt, and returns the detection for the dashboard.
-    employee_name/employee_id come from the on-duty employee's shift login on the
-    dashboard -- the checkpoint's location is stamped in automatically from config."""
+
+    employee_phone is the on-duty employee's Saudi mobile: the dispatch call is placed to it
+    instead of the authority's configured number, and it doubles as the employee's identifier
+    on the report. One of employee_phone or employee_id is required, because the report
+    cannot be generated without an employee identifier. location picks one of the fixed
+    checkpoints; without it the configured default is used."""
+    try:
+        call_phone = normalize_saudi_mobile(employee_phone) if employee_phone.strip() else None
+        checkpoint = validate_location(location) if location else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not call_phone and not employee_id.strip():
+        # Without it the graph would wait at information collection forever, since employee_id
+        # is a required report field and nothing later in the flow asks for it.
+        raise HTTPException(status_code=422, detail="Enter the employee's Saudi mobile number.")
+
     incident_id = new_incident_id()
     upload_dir = Path(settings.upload_dir)
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -31,7 +53,12 @@ async def detect(image: UploadFile, employee_name: str = Form(...), employee_id:
 
     try:
         result = await start_incident(
-            incident_id, str(image_path), employee_name=employee_name, employee_id=employee_id
+            incident_id,
+            str(image_path),
+            employee_name=employee_name,
+            employee_id=employee_id or call_phone or "",
+            location=checkpoint,
+            call_phone=call_phone,
         )
     except NoDetectionError:
         raise HTTPException(status_code=422, detail="No prohibited item detected in this frame.")
@@ -59,6 +86,15 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
     return _serialize(incident)
 
 
+def _agency_for(detection_class: str | None) -> str | None:
+    if not detection_class:
+        return None
+    try:
+        return get_authority_for_class(detection_class).agency
+    except ValueError:
+        return None
+
+
 def _serialize(incident: Incident) -> dict:
     annotated = None
     if incident.image_path:
@@ -80,6 +116,9 @@ def _serialize(incident: Incident) -> dict:
         "report": incident.report_json,
         "report_summary": incident.report_summary,
         "authority_name": incident.authority_name,
+        # Which agency this class routes to, so the dashboard can show that agency's mark as
+        # soon as the item is detected. Read from the mapping, which is the routing source of truth.
+        "authority_agency": _agency_for(incident.detection_class),
         "authority_phone": incident.authority_phone,
         "call_sid": incident.call_sid,
         "authority_response": incident.authority_response,

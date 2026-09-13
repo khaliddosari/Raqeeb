@@ -73,6 +73,32 @@ async def test_confirmed_detection_runs_to_closed():
 
 
 @pytest.mark.asyncio
+async def test_employee_mobile_takes_the_call_and_location_is_stamped():
+    incident_id = "TEST-CALL-PHONE-1"
+
+    await start_incident(
+        incident_id,
+        "irrelevant.jpg",
+        employee_name="Sara",
+        employee_id="+966551234567",
+        location="Terminal 3",
+        call_phone="+966551234567",
+    )
+    await resume_incident(incident_id, {"confirmed": True, "notes": None})
+    result = await resume_incident(
+        incident_id,
+        {"flagged_false_positive": False, "fields": {"suspect_name": "John Doe", "suspect_id_number": "X123"}},
+    )
+
+    state = result["state"]
+    assert state["incident_data"]["location"] == "Terminal 3"
+    assert state["report"]["location"] == "Terminal 3"
+    # the call goes to the employee, but the agency it represents is still the mapped one
+    assert state["authority"]["phone_number"] == "+966551234567"
+    assert state["authority"]["agency"] == "police"
+
+
+@pytest.mark.asyncio
 async def test_false_positive_via_dashboard_button_ends_workflow():
     incident_id = "TEST-FALSEPOS-1"
 

@@ -16,6 +16,7 @@ export type Incident = {
   report: Record<string, any> | null
   report_summary: string | null
   authority_name: string | null
+  authority_agency: string | null
   authority_phone: string | null
   call_sid: string | null
   authority_response: {
@@ -41,11 +42,13 @@ async function json<T>(res: Response): Promise<T> {
 
 export const uploadsUrl = (filename: string) => `${API_BASE}/uploads/${filename}`
 
-export async function detect(file: File, employeeName: string, employeeId: string) {
+export async function detect(file: File, employeeName: string, employeePhone: string | null, location: string) {
   const form = new FormData()
   form.append("image", file)
   form.append("employee_name", employeeName)
-  form.append("employee_id", employeeId)
+  // normalized to E.164 by the caller; the backend validates it again and dials it
+  if (employeePhone) form.append("employee_phone", employeePhone)
+  form.append("location", location)
   return json<{
     incident_id: string
     interrupt: Record<string, any>

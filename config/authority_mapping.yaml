@@ -3,23 +3,29 @@
 # This file is the single source of truth for CLASS -> AUTHORITY -> PHONE -> ENDPOINT
 # routing. Add/edit entries here to change routing behavior without touching code.
 #
+# Weapons go to the police; tools that are prohibited but not weapons go to airport security.
+#
 # Fields per authority entry:
-#   name             human-readable authority name
-#   phone_number     E.164 phone number Twilio will call
+#   name             human-readable authority name (the agency and the responding unit)
+#   agency           "police" | "airport_security"; the dashboard shows that agency's mark
+#   phone_number     E.164 phone number Twilio will call. The employee's own mobile, when
+#                    entered on the dashboard, replaces it for that incident.
 #   report_endpoint  URL the structured report is POSTed to (webhook/API/email-bridge)
 #   endpoint_type    "webhook" | "email" | "api"  (informational, used by report sender)
 #   default_severity default severity to suggest for this class ("low" | "medium" | "high" | "critical")
 
 classes:
   Gun:
-    name: "Airport Police - Armed Response Unit"
+    name: "Police - Armed Response Unit"
+    agency: "police"
     phone_number: "${AUTHORITY_GUN_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_GUN_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
     default_severity: "critical"
 
   Knife:
-    name: "Airport Security - Rapid Response"
+    name: "Police - Rapid Response Unit"
+    agency: "police"
     phone_number: "${AUTHORITY_KNIFE_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_KNIFE_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
@@ -27,6 +33,7 @@ classes:
 
   Pliers:
     name: "Airport Security - Standard Response"
+    agency: "airport_security"
     phone_number: "${AUTHORITY_PLIERS_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_PLIERS_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
@@ -34,6 +41,7 @@ classes:
 
   Scissors:
     name: "Airport Security - Standard Response"
+    agency: "airport_security"
     phone_number: "${AUTHORITY_SCISSORS_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_SCISSORS_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
@@ -41,6 +49,7 @@ classes:
 
   Wrench:
     name: "Airport Security - Standard Response"
+    agency: "airport_security"
     phone_number: "${AUTHORITY_WRENCH_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_WRENCH_ENDPOINT:-https://example-authority.local/api/incidents}"
     endpoint_type: "webhook"
@@ -49,6 +58,7 @@ classes:
 # Fallback used when a detected class has no explicit mapping above.
 default:
   name: "Airport Security - General Desk"
+  agency: "airport_security"
   phone_number: "${AUTHORITY_DEFAULT_PHONE:-+966500000000}"
   report_endpoint: "${AUTHORITY_DEFAULT_ENDPOINT:-https://example-authority.local/api/incidents}"
   endpoint_type: "webhook"
