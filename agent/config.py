@@ -70,9 +70,9 @@ class Settings(BaseSettings):
     yolo_confidence_threshold: float = 0.25
     upload_dir: str = str(BASE_DIR / "uploads")
 
-    # Fixed location of this scanning checkpoint. Stamped onto every incident at
-    # detection time -- it is never asked for, by form or by voice.
-    checkpoint_location: str = "Main Terminal - Checkpoint 1"
+    # Fallback checkpoint for a detection that arrives without one. The dashboard always sends
+    # one of the CHECKPOINT_LOCATIONS in agent/intake.py; this must be one of them too.
+    checkpoint_location: str = "Terminal 1"
 
     # --- Authority routing config ---
     authority_mapping_path: str = str(BASE_DIR / "config" / "authority_mapping.yaml")

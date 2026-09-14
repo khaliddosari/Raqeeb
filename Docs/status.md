@@ -199,9 +199,26 @@ together.
 
 **Agencies.** Guns and knives route to the police, pliers, scissors and wrenches to airport
 security, via the `agency` field in `config/authority_mapping.yaml`, surfaced to the dashboard
-as `authority_agency`. The agency's mark appears beside the detection, in the report and in the
-call panel. Official logos are not bundled: `components/AgencyMark.tsx` shows an icon badge
-until files are added under `public/authorities/` and their paths set there.
+as `authority_agency`. The agency's mark appears beside the detection, in the report, in the
+judgment and on the authority's turns in the call transcript. The police mark is the real Saudi
+Public Security police emblem, `public/authorities/police.png`, taken from Wikimedia Commons under
+CC BY-SA 4.0, which requires crediting it wherever the site is public; the credit is in
+`public/authorities/CREDITS.md` but is not yet shown on the page. Airport security has no mark
+yet, because no official, licensed source was found, so `components/AgencyMark.tsx` shows an icon
+badge for it until a file is added there.
+
+**The call panel is the conversation and nothing else.** `components/CallTranscript.tsx` shows
+each turn as a chat bubble headed by Raqeeb or the agency and releases words one at a time, on a
+beat that shortens when a backlog builds, since the call's text arrives several words per update.
+It keeps the newest words in view; wheel, touch, keyboard or scrollbar input that moves away from
+the bottom pauses that, and reaching the bottom again resumes it. Only finished turns are announced
+to screen readers.
+
+**The report record and the judgment never scroll.** Both are grids of `RecordItem`, a label over a
+one-line value with the full text in its tooltip, so their height is fixed. On short windows the
+report goes to four columns, and below 752px tall (`desk-tight`) the judgment's two-line clamps
+drop to one line. The narrative tab is the one exception and still scrolls, because a full report
+cannot fit.
 
 **Branding and placeholders.** The logo is `components/Logo.tsx` (a shield holding an eye) and
 `public/favicon.svg`, deliberately free of any national, ministry or company emblem because the
@@ -234,8 +251,10 @@ only to feed it: `detect()` writes a boxed render alongside the source image, ex
 turns, status changes and the dispatch decision live, because the call transcript was
 previously only visible after the call ended.
 
-For demos, `frontend/public/test-image.png` backs the "Run test image" button, and the suspect
-form is prefilled (`SUSPECT_DEFAULTS` in `App.tsx`) so a full run needs no typing.
+For demos, `frontend/public/test-image.png` backs the "Run test image" button, and the employee
+name and suspect form are prefilled in Arabic in both interface languages (`PREFILL` in `App.tsx`),
+so a full run needs only the employee's mobile number. The manual-info route's filler for missing
+values is Arabic too.
 
 ## Recent work, and why
 
@@ -408,8 +427,9 @@ against an empty key. None of it is in `tests/`, so nothing stops a regression, 
 this code exists to prevent was live in the repo once already (see `1f9ffa4`). The four cases
 are straightforward to drive against `_verify_signature` directly, no live call needed.
 
-**Add the agencies' official logos** under `frontend/public/authorities/` and point `AGENCIES`
-in `AgencyMark.tsx` at them, once the team has artwork it is allowed to use.
+**Credit the police emblem on the page, and add an airport security mark.** The emblem's CC BY-SA
+license needs a visible credit on the public site. The airport security mark needs an official
+file the team may use, added under `frontend/public/authorities/` and set in `AgencyMark.tsx`.
 
 **Gate caller-supplied numbers** before live telephony is enabled on the public site (see Traps).
 

@@ -77,6 +77,14 @@
   }
 }
 
+/* The console layout on the shortest supported windows, around 720px tall, where even two-line
+   clamps give way to one line. */
+@custom-variant desk-tight {
+  @media (min-width: 80rem) and (min-height: 40rem) and (max-height: 47rem) {
+    @slot;
+  }
+}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-brand: 'Thmanyah Serif Display', 'Thmanyah Sans', serif;
