@@ -129,9 +129,27 @@ nobody gave, and the incident closed as dispatched. Three guards now stop that:
   down: `resume_incident` only writes state back once `ainvoke` returns, so the incident was left
   stranded with its generated and delivered report unrecorded, and the dashboard showed nothing but
   a network error. `twilio_outbound_call_node` now catches it, records outcome `failed` with the
-  provider's own message on `authority_response.error`, and routes straight to the retry hold. Two
-  things cause that rejection and both are fixed in the Twilio console, not in code: a trial account
-  may only dial verified caller IDs, and Voice Geo Permissions must have Saudi Arabia enabled.
+  provider's own message on `authority_response.error`, and routes straight to the retry hold.
+
+  Which fix applies is decided entirely by Twilio's error code, and `str()` on a
+  `TwilioRestException` drops it unless stderr is a terminal, which under uvicorn it is not. The
+  node now reads `.code` off the exception and records it on `authority_response.error_code` and in
+  the `[telephony INC-...]` log line. `21215` is geo permissions, `21219` a number not verified on a
+  trial account, `21216` a call Twilio blocked as high-risk whatever the permissions say.
+
+  Two traps make this look unfixed after it has been fixed. Enabling a country only enables its
+  low-risk range: Twilio classifies narrow ranges *inside* ordinary mobile ranges as high-risk toll
+  fraud, does not publish them, and updates them several times a month, so an ordinary-looking 05
+  number can sit in one and still be refused. The Phone Number Permission Check on the Geo
+  permissions page is the only way to see which class a number is in. And every one of these
+  settings is per-project: configuring them in a console tab belonging to another project or to the
+  parent of a subaccount changes nothing for the credentials on the Modal secret.
+
+  `twilio_doctor.py` settles all of it from the deployment's own environment. It reports which
+  account the credentials actually belong to, whether it is a trial, its verified caller IDs, the
+  three Saudi Arabia permission flags, and whether the `from` number is owned and voice capable:
+
+      uv run python twilio_doctor.py +966551234567
 - **No decision without a reply.** `observe_and_drive` refuses `record_dispatch_confirmation` until
   the other side has taken a turn, and tells the model why so the call carries on. The instructions
   also say a recording is never a decision.

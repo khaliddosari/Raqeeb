@@ -148,7 +148,14 @@ async def twilio_outbound_call_node(state: IncidentState) -> dict[str, Any]:
         # returns -- and by this point the report has already been generated and delivered.
         # A call that was never placed reached no one, which is a state the graph already
         # holds and can retry, so it goes there carrying the provider's own reason.
-        print(f"[telephony {state['incident_id']}] placing the dispatch call failed: {exc!r}")
+        # The provider's own error code is the one field that says which fix applies, and
+        # TwilioRestException.__str__ drops it unless stderr is a terminal -- which under
+        # uvicorn it is not, so str(exc) alone loses it. Read it off the exception by duck
+        # typing rather than importing the SDK here; twilio_doctor.py explains what
+        # the common codes mean.
+        reason = str(getattr(exc, "msg", "") or exc)
+        code = getattr(exc, "code", None)
+        print(f"[telephony {state['incident_id']}] placing the dispatch call failed (code {code}): {reason}")
         return {
             "call_sid": None,
             "authority_response": {
@@ -156,7 +163,8 @@ async def twilio_outbound_call_node(state: IncidentState) -> dict[str, Any]:
                 "outcome": "failed",
                 "authority_statement": "",
                 "raw_transcript": [],
-                "error": str(exc),
+                "error": reason,
+                "error_code": code,
             },
             "status": "call_not_placed",
         }
