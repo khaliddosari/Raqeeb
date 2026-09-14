@@ -15,7 +15,7 @@ async def employee_voice_ws(websocket: WebSocket, incident_id: str):
     await websocket.accept()
     try:
         while True:
-            snapshot = get_incident_snapshot(incident_id)
+            snapshot = await get_incident_snapshot(incident_id)
             state = snapshot.values
             if "collect_incident_information" not in snapshot.next:
                 await websocket.send_json({"type": "not_awaiting_voice", "status": state.get("status")})

@@ -4,16 +4,22 @@ TwilioTelephonyProvider.build_stream_twiml), so audio never touches our server a
 We only accept the call over REST (agent/routes/openai_routes.py calls accept_call
 here on the realtime.call.incoming webhook) and attach a lightweight WebSocket purely
 to drive tool-calling and business logic -- mirroring AuthorityCallSession's behavior
-for the audio-bridged (Gemini) path, but with no audio relay in this file at all."""
+for the audio-bridged (Gemini) path, but with no audio relay in this file at all.
+
+That same WebSocket carries both sides' words as text, which LiveTranscript streams to the
+dashboard while the call is happening."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import time
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 
+from agent import monitor
 from agent.config import settings
 from agent.graph.runner import resume_incident
 from agent.providers.openai_llm import function_tools, telephony_audio_config
@@ -31,8 +37,98 @@ _HANGUP_SAFETY_NET_SECONDS = 45
 _MAX_CALL_SECONDS = 180
 
 
-async def accept_call(call_id: str, incident_id: str, report: dict[str, Any]) -> None:
-    instructions = build_dispatch_instructions(incident_id, report)
+class LiveTranscript:
+    """Both sides of the call as ordered lines, published to the dashboard as they are spoken.
+
+    The Realtime API streams the agent's words while it speaks, and transcribes the other
+    party separately, often finishing that after the agent has already started replying. So
+    lines are keyed by conversation item and ordered by when each turn began, not by when its
+    text arrived. Every update carries the line's whole text so far, which lets a dashboard
+    that joins late or misses an event still converge on the right transcript. Updates for a
+    growing line are throttled; the finished line always goes out."""
+
+    THROTTLE_SECONDS = 0.15
+
+    def __init__(self, incident_id: str, clock: Callable[[], float] = time.monotonic) -> None:
+        self.incident_id = incident_id
+        self._clock = clock
+        self._lines: dict[str, dict[str, Any]] = {}
+        self._order: list[str] = []
+        self._last_sent: dict[str, float] = {}
+
+    def handle(self, message: dict[str, Any]) -> bool:
+        """Consumes a Realtime event if it is part of the transcript; returns whether it was."""
+        msg_type = message.get("type")
+        if msg_type == "input_audio_buffer.committed":
+            # the authority finished a turn; claim its place before its transcription arrives
+            self._line(message["item_id"], "authority")
+        elif msg_type == "response.output_item.added":
+            item = message.get("item") or {}
+            if item.get("type") != "message":
+                return False
+            self._line(item["id"], "assistant")
+        elif msg_type == "conversation.item.input_audio_transcription.delta":
+            self._append(message["item_id"], "authority", message.get("delta", ""))
+        elif msg_type == "conversation.item.input_audio_transcription.completed":
+            self._finish(message["item_id"], "authority", message.get("transcript", ""))
+        elif msg_type == "response.output_audio_transcript.delta":
+            self._append(message["item_id"], "assistant", message.get("delta", ""))
+        elif msg_type == "response.output_audio_transcript.done":
+            self._finish(message["item_id"], "assistant", message.get("transcript", ""))
+        else:
+            return False
+        return True
+
+    def flush(self) -> None:
+        """The call is over: whatever is still mid-line is as final as it will get."""
+        for item_id in self._order:
+            line = self._lines[item_id]
+            if not line["final"]:
+                line["final"] = True
+                self._publish(item_id)
+
+    def lines(self) -> list[dict[str, str]]:
+        return [
+            {"role": line["role"], "text": line["text"].strip()}
+            for line in (self._lines[item_id] for item_id in self._order)
+            if line["text"].strip()
+        ]
+
+    def _line(self, item_id: str, role: str) -> dict[str, Any]:
+        line = self._lines.get(item_id)
+        if line is None:
+            line = {"role": role, "text": "", "final": False, "seq": len(self._order)}
+            self._lines[item_id] = line
+            self._order.append(item_id)
+        return line
+
+    def _append(self, item_id: str, role: str, delta: str) -> None:
+        line = self._line(item_id, role)
+        line["text"] += delta
+        if self._clock() - self._last_sent.get(item_id, float("-inf")) >= self.THROTTLE_SECONDS:
+            self._publish(item_id)
+
+    def _finish(self, item_id: str, role: str, text: str) -> None:
+        line = self._line(item_id, role)
+        if text:
+            line["text"] = text  # the completed transcript supersedes the accumulated deltas
+        line["final"] = True
+        print(f"[DEBUG sip {self.incident_id}] {role}: {line['text']!r}")
+        self._publish(item_id)
+
+    def _publish(self, item_id: str) -> None:
+        line = self._lines[item_id]
+        text = line["text"].strip()
+        if not text:
+            return
+        self._last_sent[item_id] = self._clock()
+        monitor.publish_transcript(
+            self.incident_id, line["role"], text, item_id=item_id, seq=line["seq"], final=line["final"]
+        )
+
+
+async def accept_call(call_id: str, incident_id: str, report: dict[str, Any], authority: dict[str, Any]) -> None:
+    instructions = build_dispatch_instructions(incident_id, report, authority)
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.post(
             _ACCEPT_URL.format(call_id=call_id),
@@ -50,11 +146,12 @@ async def accept_call(call_id: str, incident_id: str, report: dict[str, Any]) ->
 
 async def observe_and_drive(call_id: str, incident_id: str) -> None:
     """Attaches to the already-accepted call to relay tool calls into the incident
-    graph. Runs until the call ends (either party hangs up) or the safety net fires."""
+    graph and stream the transcript. Runs until the call ends (either party hangs up) or
+    the safety net fires."""
     import websockets
 
     result: dict[str, Any] = {"dispatch_confirmed": False, "authority_statement": "", "raw_transcript": []}
-    transcript: list[dict[str, str]] = []
+    live = LiveTranscript(incident_id)
     url = f"{_REALTIME_URL}?call_id={call_id}"
     headers = {"Authorization": f"Bearer {settings.openai_api_key}"}
     safety_net_task: asyncio.Task | None = None
@@ -63,21 +160,18 @@ async def observe_and_drive(call_id: str, incident_id: str) -> None:
         nonlocal safety_net_task
         async for raw in ws:
             message = json.loads(raw)
+            if live.handle(message):
+                continue
             msg_type = message.get("type")
-            if msg_type == "response.output_audio_transcript.delta":
-                print(f"[DEBUG sip {incident_id}] transcript: {message.get('delta')!r}")
-            elif msg_type == "conversation.item.input_audio_transcription.completed":
-                print(f"[DEBUG sip {incident_id}] heard from caller: {message.get('transcript')!r}")
-            elif msg_type == "response.function_call_arguments.done":
+            if msg_type == "response.function_call_arguments.done":
                 if message.get("name") != RECORD_DISPATCH_CONFIRMATION_TOOL.name:
                     continue
                 args = json.loads(message["arguments"]) if message.get("arguments") else {}
                 confirmed = bool(args.get("confirmed"))
                 statement = str(args.get("statement", ""))
-                transcript.append({"role": "authority", "text": statement})
                 result["dispatch_confirmed"] = confirmed
                 result["authority_statement"] = statement
-                result["raw_transcript"] = transcript
+                monitor.publish(incident_id, {"type": "dispatch", "confirmed": confirmed, "statement": statement})
                 await ws.send(
                     json.dumps(
                         {
@@ -112,7 +206,9 @@ async def observe_and_drive(call_id: str, incident_id: str) -> None:
     finally:
         if safety_net_task is not None:
             safety_net_task.cancel()
+        live.flush()
 
+    result["raw_transcript"] = live.lines()
     await resume_incident(incident_id, result)
 
 

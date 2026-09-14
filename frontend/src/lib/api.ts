@@ -16,6 +16,7 @@ export type Incident = {
   report: Record<string, any> | null
   report_summary: string | null
   authority_name: string | null
+  authority_name_ar: string | null
   authority_agency: string | null
   authority_phone: string | null
   call_sid: string | null
@@ -31,7 +32,9 @@ export type Incident = {
 export type MonitorEvent =
   | { type: "snapshot"; status: string | null }
   | { type: "status"; status: string; detection_class?: string; authority_name?: string; call_sid?: string }
-  | { type: "transcript"; role: string; text: string }
+  // item_id and seq mark a line still being spoken: the same item_id is re-sent with the line's
+  // whole text as it grows, and seq is the turn's position in the conversation.
+  | { type: "transcript"; role: string; text: string; item_id?: string; seq?: number; final?: boolean }
   | { type: "dispatch"; confirmed: boolean; statement: string }
   | { type: "ping" }
 

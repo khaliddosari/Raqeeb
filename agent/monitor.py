@@ -38,8 +38,18 @@ def unsubscribe(incident_id: str, queue: asyncio.Queue) -> None:
 
 
 def publish(incident_id: str, event: dict[str, Any]) -> None:
-    _history[incident_id].append(event)
-    del _history[incident_id][:-200]
+    history = _history[incident_id]
+    item_id = event.get("item_id")
+    # A live transcript line is republished with its whole text every time it grows. History
+    # keeps only its latest version, so a dashboard joining mid-call replays one entry per
+    # line rather than every intermediate word, and the 200-event cap is not eaten by one turn.
+    for index in range(len(history) - 1, -1, -1) if item_id is not None else ():
+        if history[index].get("item_id") == item_id and history[index].get("type") == event.get("type"):
+            history[index] = event
+            break
+    else:
+        history.append(event)
+    del history[:-200]
     for queue in list(_subscribers[incident_id]):
         try:
             queue.put_nowait(event)
@@ -47,8 +57,22 @@ def publish(incident_id: str, event: dict[str, Any]) -> None:
             _subscribers[incident_id].discard(queue)
 
 
-def publish_transcript(incident_id: str, role: str, text: str) -> None:
-    publish(incident_id, {"type": "transcript", "role": role, "text": text})
+def publish_transcript(
+    incident_id: str,
+    role: str,
+    text: str,
+    *,
+    item_id: str | None = None,
+    seq: int | None = None,
+    final: bool = True,
+) -> None:
+    """item_id and seq identify a line that is still being spoken: the dashboard replaces the
+    line with the same item_id and orders lines by seq. Without them the line is appended."""
+    event: dict[str, Any] = {"type": "transcript", "role": role, "text": text, "final": final}
+    if item_id is not None:
+        event["item_id"] = item_id
+        event["seq"] = seq
+    publish(incident_id, event)
 
 
 def publish_status(incident_id: str, status: str, **extra: Any) -> None:

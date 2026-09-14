@@ -6,7 +6,8 @@ import { cn } from "@/lib/utils"
 // the files under frontend/public/authorities/ and set `logo` to that path, for example
 // "authorities/police.svg". Until then each agency shows a plain icon badge in its place.
 const AGENCIES: Record<Agency, { logo: string | null; icon: LucideIcon; badge: string }> = {
-  police: { logo: null, icon: Siren, badge: "bg-blue-900 text-white" },
+  // Saudi Public Security police emblem, CC BY-SA 4.0; credit in public/authorities/CREDITS.md
+  police: { logo: "authorities/police.png", icon: Siren, badge: "bg-blue-900 text-white" },
   airport_security: { logo: null, icon: PlaneTakeoff, badge: "bg-sky-700 text-white" },
 }
 

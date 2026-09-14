@@ -46,6 +46,8 @@ class AuthorityCallResult(BaseModel):
 
 class AuthorityConfig(BaseModel):
     name: str
+    # The same authority named in Arabic, for the call and the Arabic dashboard.
+    name_ar: str | None = None
     # Which real agency this is, independent of the unit named above; the dashboard uses it
     # to show that agency's mark.
     agency: Literal["police", "airport_security"] | None = None

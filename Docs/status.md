@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-09-13. Written for a developer joining the project.
+Last updated: 2026-09-14. Written for a developer joining the project.
 
 Raqeeb detects prohibited items in X-ray baggage scans and drives the response: a YOLOv8-OBB
 model flags an item, an employee physically verifies it, and a voice agent collects details,
@@ -17,27 +17,29 @@ It is live. The dashboard is at **https://raqeeb.khalid-ai.dev** (Vercel) and ta
 backend at `https://khaliddosari2014--raqeeb-fastapi-app.modal.run` (Modal). Both deploy from
 `main`: Vercel rebuilds on every push, Modal only when someone runs `modal deploy`.
 
-**Production runs OpenAI and live Twilio calls, as of the evening of 2026-09-13.** Every run
-on the public site now writes a report with `gpt-4o-mini`, posts it to the authority endpoint,
-and places a real phone call handled by `gpt-realtime`. It spends real money on every run, and
-nothing gates who can use it (see Traps).
+**Production runs OpenAI and live Twilio calls.** Every run on the public site writes a report
+with `gpt-4o-mini`, posts it to the authority endpoint, and places a real phone call handled by
+`gpt-realtime`. It spends real money on every run, and nothing gates who can use it (see Traps).
 
 - **Production and local `.env` are both `openai` + `twilio`.** The three OpenAI values,
   `OPENAI_API_KEY`, `OPENAI_PROJECT_ID` and `OPENAI_WEBHOOK_SECRET`, are filled in. Before they
   went to production, the key was confirmed against the OpenAI API: it belongs to that project
-  and can use both `gpt-realtime` and `gpt-4o-mini`.
+  and can use both `gpt-realtime` and `gpt-4o-mini`. The local `PUBLIC_BASE_URL` still names an
+  old ngrok tunnel, so a local live call needs a fresh tunnel; calls are simpler through Modal.
 - **Gemini is gone from configuration.** The Modal secret was replaced wholesale, and the
   Gemini key is no longer in it or in the local `.env`. Switching back to Gemini needs a new
   key. The Gemini code path is still in the repo, unused.
 - **The OpenAI webhook for `realtime.call.incoming` points at the Modal URL**,
   `https://khaliddosari2014--raqeeb-fastapi-app.modal.run/api/openai/webhook`. Production was
   checked to reject unsigned and wrongly signed requests, which also proves the secret loaded.
-- **The first live run failed at the call (19:36).** Detection, verification and the OpenAI report
-  all worked, then Twilio refused to dial: `Account not authorized to call +966553225155`.
-  Saudi Arabia is enabled on Yazeed's account for low-risk numbers only, and the number is not
-  on Twilio's high-risk special list, so the block is most likely the high-risk toll fraud
-  category, which is off. Someone with access to that Twilio account has to enable it under
-  Voice, Settings, Geo permissions, Saudi Arabia. No call has connected through the webhook yet.
+- **The first live calls failed twice, for two different reasons.** On the evening of
+  2026-09-13 Twilio refused to dial: `Account not authorized to call +966553225155`, most likely
+  because the high-risk toll fraud category for Saudi Arabia was off in the geo permissions on
+  Yazeed's account. By 2026-09-14 Twilio was dialling: the Modal logs show it fetching the call
+  instructions from Modal and OpenAI posting `realtime.call.incoming` to Modal. That call died
+  because the webhook crashed reading the incident (see the checkpointer trap). The fix is
+  `0447e12`, deployed to Modal the same day. A call has not yet been confirmed connecting end to
+  end since then.
 - **Twilio credentials are Yazeed's full account**, which owns a voice-capable number; calls
   bill to him. Khalid's own Twilio account is a trial with no number. The credentials are in
   both the local `.env` and the Modal secret.
@@ -45,9 +47,10 @@ nothing gates who can use it (see Traps).
   replaces the configured `AUTHORITY_*_PHONE` for that incident. The configured numbers are used
   only when a request arrives without one.
 
-Everything is merged to `main` and live, including the single-screen layout, Arabic mode and
-Thmanyah Sans (`5b93c9b`). The backend was deployed from that commit, and Vercel rebuilt the
-dashboard from the same push. `single-page-dashboard-design` is now identical to `main`.
+Everything is merged to `main`: the redesign, the Arabic call, the live transcript and the
+webhook fix, from `single-page-dashboard-design`. Vercel rebuilds the dashboard on every push to
+`main`; Modal only changes when someone runs `modal deploy`, so check the backend matches before
+a demo, since the Arabic call and the live transcript both need it.
 `origin/agentVoice` still exists but is fully contained in `main` and is safe to delete.
 
 Four people are on the project. Nawaf built the report generator. Yazeed built the voice
@@ -55,10 +58,10 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is 19 tests, all passing: four drive the LangGraph workflow with mock providers,
-and the rest cover the intake rules in `agent/intake.py` (which phone numbers and locations are
-accepted) and the class-to-agency routing. No route, no WebSocket, and none of the frontend is
-tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
+The test suite is 24 tests, all passing: four drive the LangGraph workflow with mock providers,
+one drives the OpenAI call webhook over the on-disk checkpointer, four hold the call to Arabic and
+check the live transcript's ordering, and the rest cover the intake rules in `agent/intake.py`
+(which phone numbers and locations are accepted) and the class-to-agency routing. No other route, no WebSocket, and none of the frontend is tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
 
 ## How the pieces fit
 
@@ -106,6 +109,28 @@ G.711 mu-law the telephony media streams already carry.
 
 `signalwire` is a drop-in replacement for `twilio`; its compatibility API mirrors Twilio's and
 both reuse the same webhook routes.
+
+### The call is Arabic end to end
+
+Nothing about the authority call is English. The instructions in
+`agent/voice/authority_prompts.py` are written in Arabic, tell the agent to stay in Saudi dialect
+even if the other party speaks English, and introduce it as Raqeeb at that checkpoint, calling the
+agency the class routes to. Every fact handed over is converted from its stored code first:
+`agent/arabic.py` holds the Arabic for classes, checkpoints, agencies and dates, and `name_ar` in
+`config/authority_mapping.yaml` names each responding unit. Keep `agent/arabic.py` identical to the
+dashboard's Arabic dictionary so the call and the screen use the same words.
+`tests/test_call_arabic.py` fails if any Latin text reaches the instructions other than the tool's
+function name and the incident reference code.
+
+**The transcript streams live.** On the OpenAI path the call is observed over a WebSocket, and
+`LiveTranscript` in `agent/voice/sip_authority_call.py` publishes both sides as they speak: the
+agent's words as it says them, the authority's as they are transcribed. Each line carries an
+`item_id` and is re-sent whole as it grows, plus a `seq` for its place in the conversation, because
+the authority's words usually finish transcribing after the agent has started replying.
+`agent/monitor.py` keeps only the latest version of each line in its replay history, and the
+dashboard keeps one line per `item_id`, ordered by `seq`. Anything new that publishes growing text
+should follow the same shape rather than appending an event per word, or a late-joining dashboard
+replays hundreds of fragments and a busy call can overflow a subscriber's queue.
 
 ## Deployment
 
@@ -197,9 +222,26 @@ together.
 
 **Agencies.** Guns and knives route to the police, pliers, scissors and wrenches to airport
 security, via the `agency` field in `config/authority_mapping.yaml`, surfaced to the dashboard
-as `authority_agency`. The agency's mark appears beside the detection, in the report and in the
-call panel. Official logos are not bundled: `components/AgencyMark.tsx` shows an icon badge
-until files are added under `public/authorities/` and their paths set there.
+as `authority_agency`. The agency's mark appears beside the detection, in the report, in the
+judgment and on the authority's turns in the call transcript. The police mark is the real Saudi
+Public Security police emblem, `public/authorities/police.png`, taken from Wikimedia Commons under
+CC BY-SA 4.0, which requires crediting it wherever the site is public; the credit is in
+`public/authorities/CREDITS.md` but is not yet shown on the page. Airport security has no mark
+yet, because no official, licensed source was found, so `components/AgencyMark.tsx` shows an icon
+badge for it until a file is added there.
+
+**The call panel is the conversation and nothing else.** `components/CallTranscript.tsx` shows
+each turn as a chat bubble headed by Raqeeb or the agency and releases words one at a time, on a
+beat that shortens when a backlog builds, since the call's text arrives several words per update.
+It keeps the newest words in view; wheel, touch, keyboard or scrollbar input that moves away from
+the bottom pauses that, and reaching the bottom again resumes it. Only finished turns are announced
+to screen readers.
+
+**The report record and the judgment never scroll.** Both are grids of `RecordItem`, a label over a
+one-line value with the full text in its tooltip, so their height is fixed. On short windows the
+report goes to four columns, and below 752px tall (`desk-tight`) the judgment's two-line clamps
+drop to one line. The narrative tab is the one exception and still scrolls, because a full report
+cannot fit.
 
 **Branding and placeholders.** The logo is `components/Logo.tsx` (a shield holding an eye) and
 `public/favicon.svg`, deliberately free of any national, ministry or company emblem because the
@@ -232,8 +274,10 @@ only to feed it: `detect()` writes a boxed render alongside the source image, ex
 turns, status changes and the dispatch decision live, because the call transcript was
 previously only visible after the call ended.
 
-For demos, `frontend/public/test-image.png` backs the "Run test image" button, and the suspect
-form is prefilled (`SUSPECT_DEFAULTS` in `App.tsx`) so a full run needs no typing.
+For demos, `frontend/public/test-image.png` backs the "Run test image" button, and the employee
+name and suspect form are prefilled in Arabic in both interface languages (`PREFILL` in `App.tsx`),
+so a full run needs only the employee's mobile number. The manual-info route's filler for missing
+values is Arabic too.
 
 ## Recent work, and why
 
@@ -386,8 +430,13 @@ an open dashboard monitor WebSocket to close. Every request then times out, and 
 shows a connection reset. Run it as
 `uv run uvicorn agent.main:app --reload --reload-dir agent --reload-dir config --timeout-graceful-shutdown 3`.
 
-**Tests use in-memory checkpoints.** `tests/conftest.py` sets `CHECKPOINT_DB=:memory:` so each
-run starts clean. Anything that changes how the checkpointer is built should keep that path.
+**Tests use in-memory checkpoints, which hid a real bug.** `tests/conftest.py` sets
+`CHECKPOINT_DB=:memory:` so each run starts clean, but the in-memory saver tolerates things the
+on-disk one does not. `AsyncSqliteSaver`, which Modal runs, raises `InvalidStateError` on any
+synchronous read from the event loop, and `get_state()` from a route is exactly that. It made
+the OpenAI call webhook return 500, so every live call rang, reached OpenAI and was never
+accepted. Read graph state only through `await get_incident_snapshot()`, never `get_state()`.
+`tests/test_call_webhook.py` runs the webhook over the on-disk saver to keep it that way.
 
 **Twilio trial accounts only dial verified numbers.** A live call to an unverified destination
 fails without an obvious explanation.
@@ -429,10 +478,10 @@ Hosting is Modal for the backend, Vercel for the frontend, and Cloudflare for DN
 **Gate caller-supplied numbers. Do this first.** Live telephony is already on in production,
 so anyone with the link can make the system phone any Saudi mobile (see Traps).
 
-**Unblock and run the first live call end to end.** Enable Saudi high-risk numbers in the Twilio
-geo permissions (see Where the project is), then run one incident on
+**Confirm a live call end to end.** With the webhook fix deployed, run one incident on
 https://raqeeb.khalid-ai.dev with a team member's mobile, and watch `uv run modal app logs raqeeb`
-while it rings.
+for `POST /api/openai/webhook -> 200` while it rings. If Twilio refuses to dial again, check the
+Saudi high-risk category in the geo permissions (see Where the project is).
 
 **Handle a failed dispatch call.** Catch the Twilio error in `twilio_outbound_call_node`, record
 a `call_failed` status on the incident, and return it to the dashboard, so the operator sees why
@@ -444,17 +493,19 @@ the webhook, key and project id all come from the same OpenAI project.
 
 1. Set `min_containers=1` in `modal_app.py` for demo sessions and redeploy. A cold start takes
    about ten seconds, which is too long while a call is ringing and waiting for the webhook.
+   `scaledown_window` is already five minutes, so a container that has started stays up for
+   the length of a call.
 2. Add `ALLOWED_ORIGINS=https://raqeeb.khalid-ai.dev` to the Modal secret. CORS is still the
    `*` wildcard, so any site can call the API. Rebuilding the secret means passing every key
    again (see Deployment).
 3. Decide whether to delete the Gemini provider code, now that no environment uses it.
 
-**DEFERRED: test the SIP webhook.** Known gap, consciously postponed on 2026-09-12 to get
-deployment done first. It matters more now: production runs on OpenAI, and this webhook is the
-only way a dispatch call ever connects.
+**Test the webhook's rejection cases.** `tests/test_call_webhook.py` covers the success path:
+a correctly signed `realtime.call.incoming` is accepted and matched to its incident, over the
+on-disk checkpointer. The refusals are still untested.
 
-The signature verification in `agent/routes/openai_routes.py` is security relevant and has
-only ever been checked by hand. Those manual checks did pass: a correctly signed request is
+The signature verification in `agent/routes/openai_routes.py` is security relevant and its
+refusals have only ever been checked by hand. Those manual checks did pass: a correctly signed request is
 accepted, forgeries signed with an empty or wrong key are rejected with 400, a stale
 timestamp is rejected, and an unset secret fails closed with 500 rather than verifying
 against an empty key. On 2026-09-13 production also rejected an unsigned request and a forged
@@ -462,8 +513,9 @@ signature. None of it is in `tests/`, so nothing stops a regression, and the bug
 exists to prevent was live in the repo once already (see `1f9ffa4`). The four cases are
 straightforward to drive against `_verify_signature` directly, no live call needed.
 
-**Add the agencies' official logos** under `frontend/public/authorities/` and point `AGENCIES`
-in `AgencyMark.tsx` at them, once the team has artwork it is allowed to use.
+**Credit the police emblem on the page, and add an airport security mark.** The emblem's CC BY-SA
+license needs a visible credit on the public site. The airport security mark needs an official
+file the team may use, added under `frontend/public/authorities/` and set in `AgencyMark.tsx`.
 
 **Protect the OpenAI and Twilio spend on the public site.** Rate limiting, or a demo mode that
 replays a stored report, before sharing the link widely.

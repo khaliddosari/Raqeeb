@@ -72,9 +72,10 @@ async def openai_webhook(request: Request) -> Response:
         # accept it with, so leave it alone rather than accept blind.
         return Response(status_code=200)
 
-    snapshot = get_incident_snapshot(incident_id)
+    snapshot = await get_incident_snapshot(incident_id)
     report = snapshot.values.get("report", {})
+    authority = snapshot.values.get("authority", {})
 
-    await accept_call(call_id, incident_id, report)
+    await accept_call(call_id, incident_id, report, authority)
     asyncio.create_task(observe_and_drive(call_id, incident_id))
     return Response(status_code=200)

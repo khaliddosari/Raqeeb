@@ -27,7 +27,7 @@ async def status_callback(request: Request):
 async def twilio_media_ws(websocket: WebSocket, incident_id: str):
     await websocket.accept()
     try:
-        snapshot = get_incident_snapshot(incident_id)
+        snapshot = await get_incident_snapshot(incident_id)
         state = snapshot.values
         if "gemini_authority_conversation" not in snapshot.next:
             await websocket.close()
@@ -37,6 +37,7 @@ async def twilio_media_ws(websocket: WebSocket, incident_id: str):
             websocket,
             incident_id=incident_id,
             report=state.get("report", {}),
+            authority=state.get("authority", {}),
         )
         result = await session.run()
         await resume_incident(incident_id, result)

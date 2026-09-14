@@ -2,6 +2,7 @@ import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { MapPin, Pause as PauseIcon, Play as PlayIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AgencyMark } from "@/components/AgencyMark"
+import { CallTranscript, type TranscriptLine } from "@/components/CallTranscript"
 import {
   CallIllustration,
   JudgmentIllustration,
@@ -20,9 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   detect,
@@ -38,6 +37,7 @@ import { isAgency } from "@/lib/agency"
 import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
 import { CHECKPOINT_LOCATIONS, normalizeSaudiMobile, type CheckpointLocation } from "@/lib/intake"
 import { toPlainText } from "@/lib/plaintext"
+import { cn } from "@/lib/utils"
 
 // Each person's own spelling, in both languages.
 const TEAM: { name: Record<Lang, string>; url: string }[] = [
@@ -57,11 +57,15 @@ const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
 
 const TEST_IMAGE_URL = `${import.meta.env.BASE_URL}test-image.png`
 
-const SUSPECT_DEFAULTS = {
-  name: "Faisal",
-  id: "1093847562",
-  notes: "Suspect is cooperative and calm",
+// Prefilled demo values, Arabic in both interface languages: everything that reaches the call is Arabic.
+const PREFILL = {
+  employee: "خالد آل دوسري",
+  suspectName: "فيصل",
+  suspectId: "1093847562",
+  notes: "المشتبه به متعاون وهادئ",
 }
+
+const percent = (fraction: number | null | undefined) => (fraction == null ? "—" : `${(fraction * 100).toFixed(2)}%`)
 
 const PIPELINE = ["detected", "pending_verification", "verified", "report_sent", "call_in_progress", "closed"]
 
@@ -104,43 +108,38 @@ function Placeholder({ art, title, body }: { art: React.ReactNode; title: string
   )
 }
 
-function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+// A label over its value, one line each (or a fixed number of lines), so a grid of them has a
+// known height and a panel of facts never needs to scroll. The full value stays in the tooltip.
+function RecordItem({
+  label,
+  children,
+  title,
+  className,
+  lines,
+}: {
+  label: string
+  children: React.ReactNode
+  title?: string
+  className?: string
+  lines?: 2
+}) {
   return (
-    <TableRow className="border-border/50">
-      {/* whitespace-normal: the table cell default is nowrap, which let long notes push the table into
-          a sideways scroll that keyboard users could not reach */}
-      <TableCell className="py-1.5 align-top text-xs whitespace-normal uppercase tracking-wide text-muted-foreground sm:w-36">
-        {label}
-      </TableCell>
-      <TableCell className={`py-1.5 text-sm whitespace-normal wrap-break-word ${mono ? "font-mono tabular-nums" : ""}`}>
-        {value ?? "—"}
-      </TableCell>
-    </TableRow>
-  )
-}
-
-// Sentences with values spliced in come from the dictionary as [text, value, text, value, text].
-// Values are bdi-isolated so an English authority name inside an Arabic sentence keeps its order.
-function Emphasised({ parts }: { parts: string[] }) {
-  return (
-    <>
-      {parts.map((part, i) =>
-        i % 2 ? (
-          <strong key={i}>
-            <bdi>{part}</bdi>
-          </strong>
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
-    </>
+    <div className={cn("min-w-0", className)}>
+      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
+      <dd
+        className={cn("mt-0.5 text-sm leading-snug font-medium", lines === 2 ? "line-clamp-2 desk-tight:line-clamp-1" : "truncate")}
+        title={title}
+      >
+        {children}
+      </dd>
+    </div>
   )
 }
 
 export default function App() {
   const [lang, setLang] = useState<Lang>(initialLang)
   const t = STRINGS[lang]
-  const [employeeName, setEmployeeName] = useState("Khalid Al Dosari")
+  const [employeeName, setEmployeeName] = useState(PREFILL.employee)
   // Required: the employee's identifier on the report, and the mobile the dispatch call rings.
   const [employeePhone, setEmployeePhone] = useState("")
   const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
@@ -152,14 +151,13 @@ export default function App() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [feed, setFeed] = useState<MonitorEvent[]>([])
-  const [live, setLive] = useState(false)
   const [clock, setClock] = useState(() => new Date())
   const socketRef = useRef<WebSocket | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(true)
-  const [suspectName, setSuspectName] = useState(SUSPECT_DEFAULTS.name)
-  const [suspectId, setSuspectId] = useState(SUSPECT_DEFAULTS.id)
-  const [suspectNotes, setSuspectNotes] = useState(SUSPECT_DEFAULTS.notes)
+  const [suspectName, setSuspectName] = useState(PREFILL.suspectName)
+  const [suspectId, setSuspectId] = useState(PREFILL.suspectId)
+  const [suspectNotes, setSuspectNotes] = useState(PREFILL.notes)
 
   useEffect(() => {
     applyDocumentLang(lang)
@@ -195,8 +193,6 @@ export default function App() {
     if (!incident?.id) return
     const ws = monitorSocket(incident.id)
     socketRef.current = ws
-    ws.onopen = () => setLive(true)
-    ws.onclose = () => setLive(false)
     ws.onmessage = (ev) => {
       const parsed: MonitorEvent = JSON.parse(ev.data)
       if (parsed.type === "ping") return
@@ -224,9 +220,9 @@ export default function App() {
     setBusy("detect")
     setError(null)
     setFeed([])
-    setSuspectName(SUSPECT_DEFAULTS.name)
-    setSuspectId(SUSPECT_DEFAULTS.id)
-    setSuspectNotes(SUSPECT_DEFAULTS.notes)
+    setSuspectName(PREFILL.suspectName)
+    setSuspectId(PREFILL.suspectId)
+    setSuspectNotes(PREFILL.notes)
     try {
       const res = await detect(file, employeeName, phoneE164, location)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
@@ -242,9 +238,9 @@ export default function App() {
     setBusy("detect")
     setError(null)
     setFeed([])
-    setSuspectName(SUSPECT_DEFAULTS.name)
-    setSuspectId(SUSPECT_DEFAULTS.id)
-    setSuspectNotes(SUSPECT_DEFAULTS.notes)
+    setSuspectName(PREFILL.suspectName)
+    setSuspectId(PREFILL.suspectId)
+    setSuspectNotes(PREFILL.notes)
     try {
       const blob = await (await fetch(TEST_IMAGE_URL)).blob()
       const testFile = new File([blob], "test-image.png", { type: blob.type || "image/png" })
@@ -280,16 +276,37 @@ export default function App() {
     return i === -1 ? 0 : i
   }, [incident])
 
-  const transcript = useMemo(() => {
-    const liveLines = feed.filter((e): e is Extract<MonitorEvent, { type: "transcript" }> => e.type === "transcript")
-    if (liveLines.length) return liveLines.map((l) => ({ role: l.role, text: l.text }))
-    return incident?.authority_response?.raw_transcript ?? []
+  // Live lines are re-sent whole as they grow, keyed by item_id: keep the latest version of each
+  // and order by seq, the turn's place in the conversation, since the authority's words are often
+  // transcribed after the agent has already started answering. Lines without an id (the
+  // audio-bridged call path) are appended in arrival order. After a restart, the stored
+  // transcript stands in.
+  const transcript = useMemo<TranscriptLine[]>(() => {
+    const keyed = new Map<string, TranscriptLine>()
+    const loose: TranscriptLine[] = []
+    let arrival = 0
+    for (const event of feed) {
+      if (event.type !== "transcript") continue
+      arrival += 1
+      const line = { role: event.role, text: event.text, final: event.final ?? true, seq: event.seq ?? arrival, animate: true }
+      if (event.item_id) keyed.set(event.item_id, line)
+      else loose.push(line)
+    }
+    const live = [...keyed.values(), ...loose].sort((a, b) => a.seq - b.seq)
+    if (live.length) return live
+    return (incident?.authority_response?.raw_transcript ?? []).map((line, i) => ({
+      ...line,
+      final: true,
+      seq: i,
+      animate: false,
+    }))
   }, [feed, incident])
 
   const dispatch = incident?.authority_response
   const report = incident?.report
   const confidencePct = ((incident?.detection_confidence ?? 0) * 100).toFixed(2)
   const agency = incident && isAgency(incident.authority_agency) ? incident.authority_agency : null
+  const authorityName = (lang === "ar" && incident?.authority_name_ar) || incident?.authority_name || null
 
   // Each panel's pill, on the universal idle / running / done / malfunction scale.
   const inferenceStatus: { label: string; tone: Tone } =
@@ -734,47 +751,63 @@ export default function App() {
           >
             {report ? (
               <Tabs defaultValue="record" className="min-h-0 gap-2 desk:flex-1">
-                {/* the triggers fill the list minus its padding, so 52px here gives 44px tap targets */}
-                <TabsList className="h-13! shrink-0 desk:h-8!">
-                  <TabsTrigger value="record">{t.report.record}</TabsTrigger>
-                  <TabsTrigger value="narrative">{t.report.narrative}</TabsTrigger>
-                </TabsList>
+                <div className="flex shrink-0 items-center justify-between gap-2">
+                  {/* the triggers fill the list minus its padding, so 52px here gives 44px tap targets */}
+                  <TabsList className="h-13! shrink-0 desk:h-8!">
+                    <TabsTrigger value="record">{t.report.record}</TabsTrigger>
+                    <TabsTrigger value="narrative">{t.report.narrative}</TabsTrigger>
+                  </TabsList>
+                  <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground" title={report.incident_id}>
+                    {report.incident_id}
+                  </span>
+                </div>
                 {/* Base UI makes each tab panel a tab stop, as the tabs pattern expects; the shadcn panel
                     removes its outline, so the ring is put back here */}
                 <TabsContent value="record" className="min-h-0 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
-                  <ScrollArea className="desk:h-full">
-                    <Table>
-                      <TableBody>
-                        <Field label={t.report.incident} value={report.incident_id} mono />
-                        <Field label={t.report.detectedItem} value={t.detectionClass(report.detected_item)} />
-                        <Field label={t.report.confidence} value={report.yolo_confidence} mono />
-                        <Field label={t.report.location} value={<bdi>{t.location(report.location)}</bdi>} />
-                        {agency && (
-                          <Field
-                            label={t.report.notified}
-                            value={
-                              <span className="flex items-center gap-2">
-                                <AgencyMark agency={agency} className="size-6" />
-                                <span className="font-medium">{t.agency(agency)}</span>
-                              </span>
-                            }
-                          />
-                        )}
-                        <Field
-                          label={t.report.severity}
-                          value={
-                            <Badge variant="outline" className="text-xs uppercase">
-                              {t.severity(report.severity)}
-                            </Badge>
-                          }
-                        />
-                        <Field label={t.report.suspect} value={<bdi>{report.suspect?.name}</bdi>} />
-                        <Field label={t.report.suspectId} value={report.suspect?.id_number} mono />
-                        <Field label={t.report.employee} value={<bdi>{`${report.employee?.name} · ${report.employee?.id}`}</bdi>} />
-                        <Field label={t.report.notes} value={<bdi>{report.inspection_notes}</bdi>} />
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
+                  {/* one line per value in a tight grid, so the whole record reads without scrolling */}
+                  <dl className="grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 desk-short:grid-cols-4 desk-short:gap-y-1.5">
+                    <RecordItem label={t.report.detectedItem}>{t.detectionClass(report.detected_item)}</RecordItem>
+                    <RecordItem label={t.report.confidence}>
+                      <bdi className="tabular-nums">{percent(report.yolo_confidence)}</bdi>
+                    </RecordItem>
+                    <RecordItem label={t.report.severity}>
+                      <Badge variant="outline" className="text-xs">
+                        {t.severity(report.severity)}
+                      </Badge>
+                    </RecordItem>
+                    <RecordItem label={t.report.location}>{t.location(report.location)}</RecordItem>
+                    <RecordItem label={t.report.notified}>
+                      {agency ? (
+                        <span className="inline-flex items-center gap-1.5 align-middle">
+                          <AgencyMark agency={agency} className="size-5" />
+                          {t.agency(agency)}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </RecordItem>
+                    <RecordItem label={t.report.employee} title={report.employee?.name}>
+                      <bdi>{report.employee?.name ?? "—"}</bdi>
+                    </RecordItem>
+                    <RecordItem label={t.report.suspect} title={report.suspect?.name}>
+                      <bdi>{report.suspect?.name ?? "—"}</bdi>
+                    </RecordItem>
+                    <RecordItem label={t.report.suspectId}>
+                      <span className="font-mono tabular-nums">{report.suspect?.id_number ?? "—"}</span>
+                    </RecordItem>
+                    <RecordItem label={t.report.employeeNumber}>
+                      <span dir="ltr" className="font-mono tabular-nums">
+                        {report.employee?.id ?? "—"}
+                      </span>
+                    </RecordItem>
+                    <RecordItem
+                      label={t.report.notes}
+                      title={report.inspection_notes}
+                      className="col-span-full desk-short:col-span-3"
+                    >
+                      <bdi>{report.inspection_notes || "—"}</bdi>
+                    </RecordItem>
+                  </dl>
                 </TabsContent>
                 <TabsContent value="narrative" className="min-h-0 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
                   <ScrollArea className="h-72 desk:h-full">
@@ -793,7 +826,7 @@ export default function App() {
             )}
           </SectionShell>
 
-          {/* 04 LIVE CALL */}
+          {/* 04 LIVE CALL: the conversation itself, nothing else */}
           <SectionShell
             index={4}
             id="call"
@@ -802,73 +835,25 @@ export default function App() {
             status={callStatus}
             className="desk:col-start-2 desk:row-start-2"
           >
-            {incident ? (
-              <>
-                <dl className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12">
-                  <div className="col-span-2 min-w-0">
-                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.authority}</dt>
-                    <dd className="mt-1 flex min-w-0 items-center gap-2.5">
-                      {agency && <AgencyMark agency={agency} className="size-9 desk:size-8" />}
-                      <span className="flex min-w-0 flex-col">
-                        {agency && <span className="text-sm font-semibold">{t.agency(agency)}</span>}
-                        <bdi
-                          className={agency ? "truncate text-xs text-muted-foreground" : "truncate text-sm"}
-                          title={incident?.authority_name ?? undefined}
-                        >
-                          {incident?.authority_name ?? "—"}
-                        </bdi>
-                      </span>
-                    </dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.number}</dt>
-                    {/* The number is isolated inline rather than setting dir on the dd, which would flip the
-                        cell's alignment and push the number against the next column in Arabic. */}
-                    <dd className="truncate text-sm">
-                      <span dir="ltr" className="font-mono tabular-nums">
-                        {incident?.authority_phone ?? "—"}
-                      </span>
-                    </dd>
-                  </div>
-                  <div className="min-w-0">
-                    <dt className="text-xs uppercase tracking-wide text-muted-foreground">{t.call.callSid}</dt>
-                    <dd className="truncate font-mono text-sm" title={incident?.call_sid ?? undefined}>
-                      {incident?.call_sid ?? "—"}
-                    </dd>
-                  </div>
-                </dl>
-                <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
-                  <div className="flex shrink-0 items-center justify-between gap-2 text-xs">
-                    <h3 className="font-semibold">{t.call.transcript}</h3>
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      <StatusDot tone={live ? "done" : "idle"} />
-                      {live ? t.call.connected : t.call.disconnected}
-                    </span>
-                  </div>
-                  {transcript.length ? (
-                    <ScrollArea className="h-56 desk:h-auto desk:min-h-0 desk:flex-1">
-                      <div className="flex flex-col gap-3 pe-3">
-                        {transcript.map((line, i) => (
-                          <div key={i} className="flex flex-col gap-1">
-                            <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground rtl:font-sans">
-                              {t.call.role(line.role)}
-                            </span>
-                            <p dir="auto" className="text-sm leading-relaxed">
-                              {line.text}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </ScrollArea>
+            {transcript.length ? (
+              <CallTranscript
+                lines={transcript}
+                className="h-80 desk:h-auto desk:flex-1"
+                speaker={(line) => (line.role === "authority" ? (agency ? t.agency(agency) : t.call.role(line.role)) : t.brand)}
+                label={(line) =>
+                  line.role === "authority" ? (
+                    <>
+                      {agency && <AgencyMark agency={agency} className="size-4" />}
+                      {agency ? t.agency(agency) : t.call.role(line.role)}
+                    </>
                   ) : (
-                    <Placeholder
-                      art={<CallIllustration className="h-24 w-auto desk:h-20" />}
-                      title={t.call.emptyTitle}
-                      body={t.call.empty}
-                    />
-                  )}
-                </div>
-              </>
+                    <>
+                      <Logo className="size-4" />
+                      {t.brand}
+                    </>
+                  )
+                }
+              />
             ) : (
               <Placeholder
                 art={<CallIllustration className="h-24 w-auto desk:h-20" />}
@@ -878,7 +863,7 @@ export default function App() {
             )}
           </SectionShell>
 
-          {/* 05 JUDGMENT */}
+          {/* 05 JUDGMENT: the decision first, then the reasoning as a compact grid */}
           <SectionShell
             index={5}
             id="judgment"
@@ -888,80 +873,61 @@ export default function App() {
             className="desk:col-start-3 desk:row-start-2"
           >
             {incident ? (
-              <>
-                <div className="flex shrink-0 flex-col gap-1.5 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12">
-                  <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.decision}</h3>
-                  {dispatch ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <StatusDot tone={dispatch.dispatch_confirmed ? "done" : "malfunction"} />
-                        <span className="text-sm font-medium">
-                          {dispatch.dispatch_confirmed ? t.judgment.dispatchConfirmed : t.judgment.dispatchNotConfirmed}
-                        </span>
-                      </div>
-                      {dispatch.authority_statement && (
-                        <p dir="auto" className="text-sm leading-relaxed">
-                          “{dispatch.authority_statement}”
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">{t.judgment.noDecision}</p>
+              <div className="flex min-h-0 flex-col gap-2.5 desk-short:gap-2">
+                <div className="flex shrink-0 items-start gap-2.5 rounded-xl bg-white/55 px-3 py-2.5 ring-1 ring-primary/12 desk-short:py-2">
+                  <span className="mt-1.5">
+                    <StatusDot tone={judgmentStatus.tone} />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-medium text-muted-foreground">{t.judgment.decision}</h3>
+                    <p className="text-sm font-semibold">
+                      {dispatch
+                        ? dispatch.dispatch_confirmed
+                          ? t.judgment.dispatchConfirmed
+                          : t.judgment.dispatchNotConfirmed
+                        : t.judgment.noDecision}
+                    </p>
+                    {dispatch?.authority_statement && (
+                      <p
+                        dir="auto"
+                        className="mt-0.5 line-clamp-2 text-xs text-muted-foreground desk-tight:line-clamp-1"
+                        title={dispatch.authority_statement}
+                      >
+                        “{dispatch.authority_statement}”
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <dl className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-2 desk:grid-cols-3 desk-short:gap-y-1.5">
+                  <RecordItem label={t.judgment.detection}>
+                    {t.detectionClass(incident.detection_class ?? "")} · <bdi className="tabular-nums">{confidencePct}%</bdi>
+                  </RecordItem>
+                  <RecordItem label={t.judgment.verification} title={incident.employee_name ?? undefined}>
+                    {incident.verification_status === "confirmed" ? (
+                      <bdi>{incident.employee_name ?? t.judgment.theEmployee}</bdi>
+                    ) : (
+                      t.judgment.notVerified
+                    )}
+                  </RecordItem>
+                  <RecordItem label={t.judgment.routing} title={authorityName ?? undefined}>
+                    <span className="inline-flex items-center gap-1.5 align-middle">
+                      {agency && <AgencyMark agency={agency} className="size-5" />}
+                      {agency ? t.agency(agency) : "—"}
+                      {report?.severity && <span className="text-muted-foreground">· {t.severity(report.severity)}</span>}
+                    </span>
+                  </RecordItem>
+                  {report?.recommended_action && (
+                    <RecordItem
+                      label={t.judgment.recommendedAction}
+                      title={toPlainText(report.recommended_action)}
+                      className="col-span-full"
+                      lines={2}
+                    >
+                      <span dir="auto">{toPlainText(report.recommended_action)}</span>
+                    </RecordItem>
                   )}
-                </div>
-                <div className="flex min-h-0 flex-col gap-1.5 desk:flex-1">
-                  <h3 className="shrink-0 text-xs font-semibold">{t.judgment.reasoning}</h3>
-                  <ScrollArea className="desk:min-h-0 desk:flex-1">
-                    <div className="flex flex-col gap-2.5 pe-3 text-sm">
-                      <div>
-                        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.detection}</h4>
-                        <p className="mt-0.5">
-                          <Emphasised
-                            parts={t.judgment.detectionBody(
-                              t.detectionClass(incident.detection_class ?? ""),
-                              `${confidencePct}%`,
-                            )}
-                          />
-                        </p>
-                      </div>
-                      <Separator />
-                      <div>
-                        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.verification}</h4>
-                        <p className="mt-0.5">
-                          {incident.verification_status === "confirmed"
-                            ? t.judgment.verifiedBy(incident.employee_name ?? t.judgment.theEmployee)
-                            : t.judgment.notVerified}
-                        </p>
-                      </div>
-                      <Separator />
-                      <div>
-                        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t.judgment.routing}</h4>
-                        <p className="mt-0.5">
-                          <Emphasised
-                            parts={t.judgment.routingBody(
-                              report?.severity ? t.severity(report.severity) : "—",
-                              incident.authority_name ?? "—",
-                            )}
-                          />
-                        </p>
-                      </div>
-                      {report?.recommended_action && (
-                        <>
-                          <Separator />
-                          <div>
-                            <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                              {t.judgment.recommendedAction}
-                            </h4>
-                            <p dir="auto" className="mt-0.5 leading-relaxed">
-                              {toPlainText(report.recommended_action)}
-                            </p>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </div>
-              </>
+                </dl>
+              </div>
             ) : (
               <Placeholder
                 art={<JudgmentIllustration className="h-24 w-auto desk:h-20" />}

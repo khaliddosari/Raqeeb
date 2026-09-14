@@ -73,6 +73,11 @@ secrets = modal.Secret.from_name("raqeeb-secrets")
     # Cold start reloads torch and the model. Set this to 1 before a demo so an inbound
     # Twilio webhook is never the request that pays for it.
     min_containers=0,
+    # The OpenAI call webhook returns as soon as the call is accepted, but the call itself
+    # runs on in a background task for up to three minutes (_MAX_CALL_SECONDS plus the hangup
+    # safety net in agent/voice/sip_authority_call.py). Modal's default 60 second idle window
+    # could stop the container mid-call and lose the authority's decision.
+    scaledown_window=5 * 60,
 )
 @modal.concurrent(max_inputs=100)
 @modal.asgi_app()

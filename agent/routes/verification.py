@@ -24,8 +24,9 @@ async def submit_manual_info(incident_id: str, info: ManualSuspectInfoInput):
     fields = {
         "suspect_name": info.suspect_name,
         "suspect_id_number": info.suspect_id_number,
-        "suspect_phone_number": "N/A",
-        "employee_notes": info.notes or "No additional notes.",
+        # filler in Arabic, like everything else the report and the call carry
+        "suspect_phone_number": "غير متوفر",
+        "employee_notes": info.notes or "لا توجد ملاحظات إضافية",
     }
     result = await resume_incident(incident_id, {"fields": fields})
     return {"incident_id": incident_id, "interrupt": result["interrupt"], "status": result["state"].get("status")}

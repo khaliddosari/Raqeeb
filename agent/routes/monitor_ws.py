@@ -21,7 +21,7 @@ async def monitor_incident(websocket: WebSocket, incident_id: str) -> None:
     queue = monitor.subscribe(incident_id)
 
     try:
-        snapshot = get_incident_snapshot(incident_id)
+        snapshot = await get_incident_snapshot(incident_id)
         await websocket.send_json({"type": "snapshot", "status": snapshot.values.get("status")})
     except Exception:
         # An incident the graph has never seen is not an error worth closing over; the

@@ -7,6 +7,7 @@
 #
 # Fields per authority entry:
 #   name             human-readable authority name (the agency and the responding unit)
+#   name_ar          the same name in Arabic, used on the call and on the Arabic dashboard
 #   agency           "police" | "airport_security"; the dashboard shows that agency's mark
 #   phone_number     E.164 phone number Twilio will call. The employee's own mobile, when
 #                    entered on the dashboard, replaces it for that incident.
@@ -17,6 +18,7 @@
 classes:
   Gun:
     name: "Police - Armed Response Unit"
+    name_ar: "الشرطة - وحدة الاستجابة المسلحة"
     agency: "police"
     phone_number: "${AUTHORITY_GUN_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_GUN_ENDPOINT:-https://example-authority.local/api/incidents}"
@@ -25,6 +27,7 @@ classes:
 
   Knife:
     name: "Police - Rapid Response Unit"
+    name_ar: "الشرطة - وحدة الاستجابة السريعة"
     agency: "police"
     phone_number: "${AUTHORITY_KNIFE_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_KNIFE_ENDPOINT:-https://example-authority.local/api/incidents}"
@@ -33,6 +36,7 @@ classes:
 
   Pliers:
     name: "Airport Security - Standard Response"
+    name_ar: "أمن المطار - الاستجابة الاعتيادية"
     agency: "airport_security"
     phone_number: "${AUTHORITY_PLIERS_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_PLIERS_ENDPOINT:-https://example-authority.local/api/incidents}"
@@ -41,6 +45,7 @@ classes:
 
   Scissors:
     name: "Airport Security - Standard Response"
+    name_ar: "أمن المطار - الاستجابة الاعتيادية"
     agency: "airport_security"
     phone_number: "${AUTHORITY_SCISSORS_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_SCISSORS_ENDPOINT:-https://example-authority.local/api/incidents}"
@@ -49,6 +54,7 @@ classes:
 
   Wrench:
     name: "Airport Security - Standard Response"
+    name_ar: "أمن المطار - الاستجابة الاعتيادية"
     agency: "airport_security"
     phone_number: "${AUTHORITY_WRENCH_PHONE:-+966500000000}"
     report_endpoint: "${AUTHORITY_WRENCH_ENDPOINT:-https://example-authority.local/api/incidents}"
@@ -58,6 +64,7 @@ classes:
 # Fallback used when a detected class has no explicit mapping above.
 default:
   name: "Airport Security - General Desk"
+  name_ar: "أمن المطار - المكتب العام"
   agency: "airport_security"
   phone_number: "${AUTHORITY_DEFAULT_PHONE:-+966500000000}"
   report_endpoint: "${AUTHORITY_DEFAULT_ENDPOINT:-https://example-authority.local/api/incidents}"
