@@ -42,10 +42,9 @@ class TwilioTelephonyProvider(TelephonyProvider):
                 status_callback=status_callback_url(incident_id),
                 # "completed" also reports calls that never connected: busy, no-answer, failed.
                 status_callback_event=["initiated", "answered", "completed"],
-                # Answering machine detection, synchronous: Twilio holds the voice webhook until it
-                # has judged who picked up and says so in AnsweredBy, so a voicemail greeting is
-                # hung up on instead of being briefed, and never mistaken for the authority.
-                machine_detection="Enable",
+                # No answering machine detection: it judged a person answering to be a machine on
+                # 3 of 5 live calls and hung up on them. Hanging up on the authority is worse than
+                # briefing a voicemail.
             )
             return call.sid
 

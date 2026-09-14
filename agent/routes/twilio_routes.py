@@ -13,14 +13,12 @@ router = APIRouter(tags=["twilio"])
 # CallStatus values on the final status callback of a call that never connected to anyone.
 _NEVER_CONNECTED = {"busy": "busy", "no-answer": "no_answer", "failed": "failed", "canceled": "failed"}
 
-_HANGUP_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>'
-
 
 async def _signed_form(request: Request, url: str) -> dict[str, str]:
     """The webhook's form fields, once X-Twilio-Signature proves Twilio sent them.
 
-    These webhooks change an incident (a voicemail or a missed call ends the dispatch call), and the
-    call SID they name is visible on the incident API, so a forged request must not pass. The URL is
+    The status callback changes an incident (a missed call ends the dispatch call), and the call SID
+    it names is visible on the incident API, so a forged request must not pass. The URL is
     rebuilt from PUBLIC_BASE_URL exactly as it was handed to Twilio. SignalWire signs differently and
     is not checked."""
     form = {key: str(value) for key, value in (await request.form()).items()}
@@ -36,14 +34,10 @@ async def _signed_form(request: Request, url: str) -> dict[str, str]:
 
 @router.post("/api/twilio/voice-webhook")
 async def voice_webhook(request: Request, incident_id: str):
-    """Twilio hits this once the outbound call is answered and answering machine detection has
-    judged who answered. A person, or an unsure verdict, is connected to the voice agent. A
-    voicemail greeting or a fax tone is hung up on and the incident recorded as unanswered."""
-    form = await _signed_form(request, voice_webhook_url(incident_id))
-    answered_by = form.get("AnsweredBy", "")
-    if answered_by.startswith("machine") or answered_by == "fax":
-        await end_unanswered_call(incident_id, form.get("CallSid", ""), "voicemail")
-        return Response(content=_HANGUP_TWIML, media_type="application/xml")
+    """Twilio hits this once the outbound call is answered, and whoever answered is connected to
+    the voice agent. There is no answering machine detection (see place_call), so a voicemail is
+    briefed too; the call driver still refuses a decision recorded before anyone replies."""
+    await _signed_form(request, voice_webhook_url(incident_id))
     twiml = get_telephony_provider().build_stream_twiml(incident_id)
     return Response(content=twiml, media_type="application/xml")
 

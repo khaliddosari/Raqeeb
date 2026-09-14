@@ -63,8 +63,9 @@ The test suite is 31 tests, all passing: five drive the LangGraph workflow with 
 (one through the manual-info route, where a scanned pass's event replaces the location),
 one drives the OpenAI call webhook over the on-disk checkpointer, five hold the call to Arabic
 (every checkpoint's spoken name and scenario included) and check the live transcript's ordering,
-five cover calls that reach no one (`tests/test_call_unanswered.py`: voicemail, a missed call,
-stale or forged Twilio webhooks, the retry, and a decision recorded before anyone spoke), and the
+five cover calls that reach no one (`tests/test_call_unanswered.py`: an answered call is always
+connected, a missed call, stale or forged Twilio webhooks, the retry, and a decision recorded
+before anyone spoke), and the
 rest cover the intake rules in `agent/intake.py` (which phone numbers and locations are accepted)
 and the class-to-agency routing. The detection and verification routes, the monitor WebSocket and
 all of the frontend are untested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
@@ -119,18 +120,21 @@ both reuse the same webhook routes.
 ### A call that reaches no one
 
 On 2026-09-14 a dispatch call went to the callee's voicemail. The agent recorded a confirmation
-nobody gave, and the incident closed as dispatched. Three guards now stop that:
+nobody gave, and the incident closed as dispatched. Two guards now stop that:
 
-- **Answering machine detection.** `place_call` asks Twilio for synchronous detection, so the
-  voice webhook arrives with `AnsweredBy`. A machine or fax gets `<Hangup/>` and the incident is
-  recorded as unanswered with outcome `voicemail`. A person, or an unsure verdict, is connected to
-  the agent as before. A person now hears a second or two of silence after answering while Twilio
-  decides, and detection costs a little extra per call.
 - **Calls that never connect.** The final status callback for a busy line, no answer or failure
   resumes the incident as unanswered. Before this such an incident waited forever.
 - **No decision without a reply.** `observe_and_drive` refuses `record_dispatch_confirmation` until
   the other side has taken a turn, and tells the model why so the call carries on. The instructions
   also say a recording is never a decision.
+
+Answering machine detection was a third guard for a few hours on 2026-09-14 and was removed the
+same day. On live calls it judged the person answering to be a machine 3 times out of 5
+(`AnsweredBy=machine_start`), and the voice webhook hung up on them. Every answered call is now
+connected to the agent. The cost is that a voicemail gets briefed again. Its greeting counts as a
+reply, so the no-decision guard does not stop a confirmation recorded after it; only the
+instructions do. If voicemail becomes a problem again, retune Twilio's
+`MachineDetectionSpeechThreshold` (default 2400 ms, up to 6000) rather than restoring the defaults.
 
 An unanswered call sets status `call_unanswered` and pauses at `await_call_retry`. The dashboard
 shows the reason with a "call again" button, which posts to `/api/incidents/{id}/call-again` and

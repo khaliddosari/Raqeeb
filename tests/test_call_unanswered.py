@@ -1,10 +1,11 @@
 """A dispatch call that reaches no one must never read as a dispatched team.
 
 Seen live: a call that went to the callee's voicemail was briefed, the agent recorded a
-confirmation nobody gave, and the incident closed as dispatched. These cover the three guards:
-Twilio's answering machine detection hangs up on a machine, a call that never connects is
-recorded as unanswered instead of waiting forever, and the call driver refuses a decision
-recorded before anyone on the line has spoken. An unanswered incident can be called again."""
+confirmation nobody gave, and the incident closed as dispatched. These cover the guards: a call
+that never connects is recorded as unanswered instead of waiting forever, and the call driver
+refuses a decision recorded before anyone on the line has spoken. An unanswered incident can be
+called again. Answering machine detection was dropped because it hung up on people, so an
+answered call is always connected to the agent."""
 
 from __future__ import annotations
 
@@ -61,18 +62,16 @@ async def _post(path: str) -> httpx.Response:
 
 
 @pytest.mark.asyncio
-async def test_voicemail_is_hung_up_on_and_the_call_can_be_placed_again():
-    incident_id = "TEST-VOICEMAIL-1"
+async def test_an_unanswered_call_can_be_placed_again():
+    incident_id = "TEST-RETRY-1"
     call_sid = await _calling(incident_id)
 
-    response = await _twilio_post(voice_webhook_url(incident_id), {"CallSid": call_sid, "AnsweredBy": "machine_start"})
-    assert response.status_code == 200
-    assert "<Hangup/>" in response.text
+    await _twilio_post(status_callback_url(incident_id), {"CallSid": call_sid, "CallStatus": "busy"})
 
     snapshot = await get_incident_snapshot(incident_id)
     assert snapshot.values["status"] == "call_unanswered"
     assert snapshot.next == ("await_call_retry",)
-    assert snapshot.values["authority_response"]["outcome"] == "voicemail"
+    assert snapshot.values["authority_response"]["outcome"] == "busy"
     assert snapshot.values["authority_response"]["dispatch_confirmed"] is False
 
     retried = await _post(f"/api/incidents/{incident_id}/call-again")
@@ -88,14 +87,18 @@ async def test_voicemail_is_hung_up_on_and_the_call_can_be_placed_again():
 
 
 @pytest.mark.asyncio
-async def test_a_person_answering_is_connected_to_the_agent():
-    incident_id = "TEST-HUMAN-1"
+async def test_an_answered_call_is_always_connected_to_the_agent():
+    incident_id = "TEST-ANSWERED-1"
     call_sid = await _calling(incident_id)
 
-    response = await _twilio_post(voice_webhook_url(incident_id), {"CallSid": call_sid, "AnsweredBy": "human"})
+    # a verdict that once hung up on people who answered, should one ever be sent again
+    response = await _twilio_post(voice_webhook_url(incident_id), {"CallSid": call_sid, "AnsweredBy": "machine_start"})
     assert response.status_code == 200
     assert "<Hangup/>" not in response.text
     assert (await get_incident_snapshot(incident_id)).values["status"] == "call_in_progress"
+
+    forged = await _twilio_post(voice_webhook_url(incident_id), {"CallSid": call_sid}, sign=False)
+    assert forged.status_code == 403
 
 
 @pytest.mark.asyncio
