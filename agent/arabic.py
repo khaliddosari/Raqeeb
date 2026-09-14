@@ -1,11 +1,14 @@
 """Arabic renderings of the codes an incident carries, for everything said on or shown about
-the authority call. The codes themselves (Gun, Terminal 3, police) stay the storage format;
-these are the words used in their place. Kept identical to the dashboard's Arabic dictionary
-in frontend/src/lib/i18n.ts, so the call and the screen name things the same way."""
+the authority call. The codes themselves (Gun, Black Hat MEA, police) stay the storage format;
+these are the words used in their place. Classes and agencies match the dashboard's Arabic
+dictionary in frontend/src/lib/i18n.ts; checkpoint names are the spoken forms from
+agent/checkpoints.py, which transliterate the Latin brand names the dashboard shows."""
 
 from __future__ import annotations
 
 import datetime
+
+from agent.checkpoints import CHECKPOINTS
 
 DETECTION_CLASSES_AR: dict[str, str] = {
     "Gun": "سلاح ناري",
@@ -15,15 +18,9 @@ DETECTION_CLASSES_AR: dict[str, str] = {
     "Wrench": "مفتاح ربط",
 }
 
-CHECKPOINT_LOCATIONS_AR: dict[str, str] = {
-    "Terminal 1": "الصالة 1",
-    "Terminal 2": "الصالة 2",
-    "Terminal 3": "الصالة 3",
-    "Terminal 4": "الصالة 4",
-    "Terminal 5": "الصالة 5",
-    "Private Aviation Terminal": "صالة الطيران الخاص",
-    "LEAP 2026 Exhibition": "معرض LEAP 2026",
-}
+# Spoken forms, in Arabic script even where the dashboard writes a Latin brand name, because these
+# are what the voice agent says aloud.
+CHECKPOINT_LOCATIONS_AR: dict[str, str] = {checkpoint.code: checkpoint.spoken_ar for checkpoint in CHECKPOINTS}
 
 AGENCIES_AR: dict[str, str] = {
     "police": "الشرطة",

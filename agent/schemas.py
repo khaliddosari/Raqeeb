@@ -67,6 +67,8 @@ class IncidentReport(BaseModel):
     suspect: dict[str, Any]
     employee: dict[str, Any]
     inspection_notes: str
+    # the checkpoint's demo scenario, ordered label to detail, from agent/checkpoints.py
+    scenario: dict[str, str] = {}
     severity: str
     recommended_action: str
     additional_info: dict[str, Any] = {}

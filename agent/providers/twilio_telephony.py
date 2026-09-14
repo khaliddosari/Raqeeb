@@ -20,20 +20,32 @@ def _client():
     return Client(settings.twilio_account_sid, settings.twilio_auth_token)
 
 
+# Twilio signs each webhook over the exact URL it was given, so the routes that check those
+# signatures (agent/routes/twilio_routes.py) rebuild the URL with these same two functions.
+def voice_webhook_url(incident_id: str) -> str:
+    return f"{settings.public_base_url}/api/twilio/voice-webhook?{urlencode({'incident_id': incident_id})}"
+
+
+def status_callback_url(incident_id: str) -> str:
+    return f"{settings.public_base_url}/api/twilio/status-callback?{urlencode({'incident_id': incident_id})}"
+
+
 class TwilioTelephonyProvider(TelephonyProvider):
     async def place_call(self, to_number: str, incident_id: str) -> str:
         import asyncio
-
-        webhook_url = f"{settings.public_base_url}/api/twilio/voice-webhook?{urlencode({'incident_id': incident_id})}"
-        status_callback = f"{settings.public_base_url}/api/twilio/status-callback"
 
         def _create():
             call = _client().calls.create(
                 to=to_number,
                 from_=settings.twilio_phone_number,
-                url=webhook_url,
-                status_callback=status_callback,
+                url=voice_webhook_url(incident_id),
+                status_callback=status_callback_url(incident_id),
+                # "completed" also reports calls that never connected: busy, no-answer, failed.
                 status_callback_event=["initiated", "answered", "completed"],
+                # Answering machine detection, synchronous: Twilio holds the voice webhook until it
+                # has judged who picked up and says so in AnsweredBy, so a voicemail greeting is
+                # hung up on instead of being briefed, and never mistaken for the authority.
+                machine_detection="Enable",
             )
             return call.sid
 

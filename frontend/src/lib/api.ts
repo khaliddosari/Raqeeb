@@ -22,6 +22,8 @@ export type Incident = {
   call_sid: string | null
   authority_response: {
     dispatch_confirmed?: boolean
+    // "answered", or why the call reached no one: "voicemail", "no_answer", "busy", "failed"
+    outcome?: string
     authority_statement?: string
     raw_transcript?: { role: string; text: string }[]
   } | null
@@ -82,6 +84,11 @@ export async function submitInfo(id: string, suspectName: string, suspectId: str
       body: JSON.stringify({ suspect_name: suspectName, suspect_id_number: suspectId, notes }),
     }),
   )
+}
+
+// After a call that reached no one, places the dispatch call again.
+export async function callAgain(id: string) {
+  return json<any>(await fetch(`${API_BASE}/api/incidents/${id}/call-again`, { method: "POST" }))
 }
 
 export function monitorSocket(id: string): WebSocket {

@@ -9,6 +9,7 @@ import datetime
 import uuid
 from typing import Any
 
+from agent.checkpoints import scenario_for
 from agent.config import settings
 from agent.providers.base import LLMProvider
 from agent.schemas import IncidentReport
@@ -69,6 +70,7 @@ async def generate_report(
             "id": incident_data.get("employee_id"),
         },
         "inspection_notes": incident_data.get("employee_notes", ""),
+        "scenario": scenario_for(incident_data["location"]),
         "additional_info": {
             k: v
             for k, v in incident_data.items()

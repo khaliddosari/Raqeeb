@@ -72,7 +72,7 @@ class Settings(BaseSettings):
 
     # Fallback checkpoint for a detection that arrives without one. The dashboard always sends
     # one of the CHECKPOINT_LOCATIONS in agent/intake.py; this must be one of them too.
-    checkpoint_location: str = "Terminal 1"
+    checkpoint_location: str = "Private Aviation Terminal"
 
     # --- Authority routing config ---
     authority_mapping_path: str = str(BASE_DIR / "config" / "authority_mapping.yaml")

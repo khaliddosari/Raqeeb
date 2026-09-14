@@ -154,9 +154,33 @@ async def gemini_authority_conversation_node(state: IncidentState) -> dict[str, 
     return {"authority_response": result, "status": "authority_responded"}
 
 
+# Mirrors UNANSWERED_OUTCOMES in agent/graph/runner.py, which imports this module.
+_UNANSWERED_OUTCOMES = frozenset({"voicemail", "no_answer", "busy", "failed"})
+
+
 async def update_incident_node(state: IncidentState) -> dict[str, Any]:
-    confirmed = bool((state.get("authority_response") or {}).get("dispatch_confirmed"))
-    return {"status": "closed" if confirmed else "closed_unconfirmed"}
+    response = state.get("authority_response") or {}
+    if response.get("outcome") in _UNANSWERED_OUTCOMES:
+        # nobody at the authority heard the report, so this is not a close of any kind
+        return {"status": "call_unanswered"}
+    return {"status": "closed" if response.get("dispatch_confirmed") else "closed_unconfirmed"}
+
+
+def route_after_update(state: IncidentState) -> str:
+    return "await_call_retry" if state["status"] == "call_unanswered" else END
+
+
+async def await_call_retry_node(state: IncidentState) -> dict[str, Any]:
+    """Holds an unanswered incident until the employee asks for the call to be placed again."""
+    interrupt(
+        {
+            "stage": "call_unanswered",
+            "outcome": (state.get("authority_response") or {}).get("outcome"),
+            "call_sid": state.get("call_sid"),
+        }
+    )
+    # the next call starts with no decision on record
+    return {"authority_response": None}
 
 
 # --- Graph assembly ------------------------------------------------------------
@@ -177,6 +201,7 @@ def build_graph():
     graph.add_node("twilio_outbound_call", twilio_outbound_call_node)
     graph.add_node("gemini_authority_conversation", gemini_authority_conversation_node)
     graph.add_node("update_incident", update_incident_node)
+    graph.add_node("await_call_retry", await_call_retry_node)
 
     graph.set_entry_point("yolo_detection")
     graph.add_edge("yolo_detection", "display_detection")
@@ -204,7 +229,8 @@ def build_graph():
     graph.add_edge("send_report", "twilio_outbound_call")
     graph.add_edge("twilio_outbound_call", "gemini_authority_conversation")
     graph.add_edge("gemini_authority_conversation", "update_incident")
-    graph.add_edge("update_incident", END)
+    graph.add_conditional_edges("update_incident", route_after_update, {"await_call_retry": "await_call_retry", END: END})
+    graph.add_edge("await_call_retry", "twilio_outbound_call")
     graph.add_edge("false_positive_end", END)
 
     return graph

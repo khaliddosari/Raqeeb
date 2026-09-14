@@ -36,6 +36,12 @@ _HANGUP_SAFETY_NET_SECONDS = 45
 # observation by a ceiling no real dispatch call should need.
 _MAX_CALL_SECONDS = 180
 
+# Returned to the model when it records a decision before anyone on the line has said a word.
+_NO_DECISION_HEARD = (
+    "لم يُسجَّل شيء: لم يتكلّم أحد من الجهة بعد، فلا يوجد قرار. "
+    "تأكّد أن من على الخط شخص من الجهة، وأكمل البلاغ، ولا تستدعِ الأداة إلا بعد أن تسمع قرارهم."
+)
+
 
 class LiveTranscript:
     """Both sides of the call as ordered lines, published to the dashboard as they are spoken.
@@ -86,6 +92,11 @@ class LiveTranscript:
             if not line["final"]:
                 line["final"] = True
                 self._publish(item_id)
+
+    def heard_authority(self) -> bool:
+        """Whether the other side has taken a turn yet. Their turn is counted when it is committed,
+        before its transcription arrives, so a reply that is still being transcribed counts."""
+        return any(line["role"] == "authority" for line in self._lines.values())
 
     def lines(self) -> list[dict[str, str]]:
         return [
@@ -150,7 +161,12 @@ async def observe_and_drive(call_id: str, incident_id: str) -> None:
     the safety net fires."""
     import websockets
 
-    result: dict[str, Any] = {"dispatch_confirmed": False, "authority_statement": "", "raw_transcript": []}
+    result: dict[str, Any] = {
+        "dispatch_confirmed": False,
+        "outcome": "answered",
+        "authority_statement": "",
+        "raw_transcript": [],
+    }
     live = LiveTranscript(incident_id)
     url = f"{_REALTIME_URL}?call_id={call_id}"
     headers = {"Authorization": f"Bearer {settings.openai_api_key}"}
@@ -166,25 +182,20 @@ async def observe_and_drive(call_id: str, incident_id: str) -> None:
             if msg_type == "response.function_call_arguments.done":
                 if message.get("name") != RECORD_DISPATCH_CONFIRMATION_TOOL.name:
                     continue
+                if not live.heard_authority():
+                    # A decision nobody has spoken is not one. Seen on a call that reached voicemail:
+                    # the model recorded a confirmation before any reply, and the incident closed as
+                    # dispatched. Refuse it, and tell the model why, so the call carries on.
+                    print(f"[DEBUG sip {incident_id}] refused a dispatch decision recorded before any reply")
+                    await _send_tool_output(ws, message["call_id"], {"recorded": False, "reason": _NO_DECISION_HEARD})
+                    continue
                 args = json.loads(message["arguments"]) if message.get("arguments") else {}
                 confirmed = bool(args.get("confirmed"))
                 statement = str(args.get("statement", ""))
                 result["dispatch_confirmed"] = confirmed
                 result["authority_statement"] = statement
                 monitor.publish(incident_id, {"type": "dispatch", "confirmed": confirmed, "statement": statement})
-                await ws.send(
-                    json.dumps(
-                        {
-                            "type": "conversation.item.create",
-                            "item": {
-                                "type": "function_call_output",
-                                "call_id": message["call_id"],
-                                "output": json.dumps({"acknowledged": True}),
-                            },
-                        }
-                    )
-                )
-                await ws.send(json.dumps({"type": "response.create"}))
+                await _send_tool_output(ws, message["call_id"], {"acknowledged": True})
                 # Don't hang up ourselves -- let the *other party* end the call, same as
                 # AuthorityCallSession. This timer is only a safety net; cancelled below
                 # once this function returns so it doesn't outlive the call it belongs to.
@@ -210,6 +221,19 @@ async def observe_and_drive(call_id: str, incident_id: str) -> None:
 
     result["raw_transcript"] = live.lines()
     await resume_incident(incident_id, result)
+
+
+async def _send_tool_output(ws, call_id: str, output: dict[str, Any]) -> None:
+    """Answers a tool call and lets the model speak again."""
+    await ws.send(
+        json.dumps(
+            {
+                "type": "conversation.item.create",
+                "item": {"type": "function_call_output", "call_id": call_id, "output": json.dumps(output, ensure_ascii=False)},
+            }
+        )
+    )
+    await ws.send(json.dumps({"type": "response.create"}))
 
 
 async def _hangup_safety_net(call_id: str) -> None:

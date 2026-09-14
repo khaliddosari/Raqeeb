@@ -12,6 +12,7 @@ import re
 
 from agent import monitor
 from agent.authority_mapping import get_authority_for_class
+from agent.checkpoints import CHECKPOINTS, scenario_for
 from agent.voice.authority_prompts import RECORD_DISPATCH_CONFIRMATION_TOOL, build_dispatch_instructions
 from agent.voice.sip_authority_call import LiveTranscript
 
@@ -20,10 +21,11 @@ _LATIN = re.compile(r"[A-Za-z]")
 _REPORT = {
     "incident_id": "INC-20260914-81127F",
     "date_time": "2026-09-14T11:06:29+03:00",
-    "location": "Terminal 3",
+    "location": "Money20/20 Middle East",
     "detected_item": "Gun",
     "employee": {"name": "خالد آل دوسري", "id": "+966551234567"},
     "suspect": {"name": "فيصل", "id_number": "1093847562"},
+    "scenario": scenario_for("Money20/20 Middle East"),
 }
 
 
@@ -31,11 +33,23 @@ def test_call_instructions_carry_no_english():
     authority = get_authority_for_class("Gun").model_dump()
     prompt = build_dispatch_instructions(_REPORT["incident_id"], _REPORT, authority)
 
-    for expected in ("الصالة 3", "سلاح ناري", "الشرطة", "وحدة الاستجابة المسلحة", "14 سبتمبر 2026"):
+    expected_text = ("موني عشرين عشرين", "سلاح ناري", "الشرطة", "وحدة الاستجابة المسلحة", "14 سبتمبر 2026",
+                     "صندوق معدات أسود بعجلات", "رصيف التحميل الخلفي")
+    for expected in expected_text:
         assert expected in prompt, expected
 
     leftover = prompt.replace(RECORD_DISPATCH_CONFIRMATION_TOOL.name, "").replace(_REPORT["incident_id"], "")
     assert not _LATIN.findall(leftover), sorted(set(_LATIN.findall(leftover)))
+
+
+def test_every_checkpoint_speaks_arabic_and_has_a_scenario():
+    """The agent says these names and may be asked any of these details, so none may be Latin."""
+    assert len({c.pass_slug for c in CHECKPOINTS}) == len(CHECKPOINTS)
+    for checkpoint in CHECKPOINTS:
+        assert not _LATIN.search(checkpoint.spoken_ar), checkpoint.code
+        assert len(checkpoint.scenario) >= 8, checkpoint.code
+        for label, detail in checkpoint.scenario:
+            assert not _LATIN.search(label + detail), (checkpoint.code, label)
 
 
 def test_tool_definition_is_arabic_apart_from_identifiers():

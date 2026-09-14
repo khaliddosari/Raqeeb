@@ -81,7 +81,7 @@ async def test_employee_mobile_takes_the_call_and_location_is_stamped():
         "irrelevant.jpg",
         employee_name="Sara",
         employee_id="+966551234567",
-        location="Terminal 3",
+        location="Black Hat MEA",
         call_phone="+966551234567",
     )
     await resume_incident(incident_id, {"confirmed": True, "notes": None})
@@ -91,8 +91,10 @@ async def test_employee_mobile_takes_the_call_and_location_is_stamped():
     )
 
     state = result["state"]
-    assert state["incident_data"]["location"] == "Terminal 3"
-    assert state["report"]["location"] == "Terminal 3"
+    assert state["incident_data"]["location"] == "Black Hat MEA"
+    assert state["report"]["location"] == "Black Hat MEA"
+    # the checkpoint's scenario travels with the report, for the narrative and the call
+    assert state["report"]["scenario"]["نقطة التفتيش"] == "بوابة المشاركين رقم 2"
     # the call goes to the employee, but the agency it represents is still the mapped one
     assert state["authority"]["phone_number"] == "+966551234567"
     assert state["authority"]["agency"] == "police"

@@ -10,17 +10,11 @@ from __future__ import annotations
 
 import re
 
-# The checkpoints a frame can come from. The dashboard sends these exact strings and
-# translates them for display; reports and calls use them as written.
-CHECKPOINT_LOCATIONS: tuple[str, ...] = (
-    "Terminal 1",
-    "Terminal 2",
-    "Terminal 3",
-    "Terminal 4",
-    "Terminal 5",
-    "Private Aviation Terminal",
-    "LEAP 2026 Exhibition",
-)
+from agent.checkpoints import CHECKPOINTS
+
+# The checkpoints a frame can come from, defined with their scenarios in agent/checkpoints.py.
+# The dashboard sends these exact codes and translates them for display.
+CHECKPOINT_LOCATIONS: tuple[str, ...] = tuple(checkpoint.code for checkpoint in CHECKPOINTS)
 
 # Saudi mobiles are 5 followed by eight digits, written as 05XXXXXXXX locally or with the
 # 966 country code. Landlines and foreign numbers are refused.

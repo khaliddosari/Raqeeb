@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from agent.graph.runner import resume_incident
+from agent import monitor
+from agent.graph.runner import call_again, resume_incident
 from agent.schemas import ManualSuspectInfoInput, VerificationInput
 
 router = APIRouter(prefix="/api", tags=["verification"])
@@ -29,4 +30,13 @@ async def submit_manual_info(incident_id: str, info: ManualSuspectInfoInput):
         "employee_notes": info.notes or "لا توجد ملاحظات إضافية",
     }
     result = await resume_incident(incident_id, {"fields": fields})
+    return {"incident_id": incident_id, "interrupt": result["interrupt"], "status": result["state"].get("status")}
+
+
+@router.post("/incidents/{incident_id}/call-again")
+async def call_authority_again(incident_id: str):
+    """Places the dispatch call again after nobody answered: a voicemail, a missed call, a busy line."""
+    result = await call_again(incident_id)
+    if result is None:
+        raise HTTPException(status_code=409, detail="This incident is not waiting to call again.")
     return {"incident_id": incident_id, "interrupt": result["interrupt"], "status": result["state"].get("status")}

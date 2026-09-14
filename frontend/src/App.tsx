@@ -1,5 +1,15 @@
 import { DirectionProvider } from "@base-ui/react/direction-provider"
-import { BadgeCheck, Keyboard, MapPin, Pause as PauseIcon, Play as PlayIcon, QrCode, ScanLine } from "lucide-react"
+import {
+  BadgeCheck,
+  Keyboard,
+  MapPin,
+  Pause as PauseIcon,
+  PhoneMissed,
+  PhoneOutgoing,
+  Play as PlayIcon,
+  QrCode,
+  ScanLine,
+} from "lucide-react"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AgencyMark } from "@/components/AgencyMark"
 import { CallTranscript, type TranscriptLine } from "@/components/CallTranscript"
@@ -15,7 +25,7 @@ import { SectionShell, StatusPill, type Tone } from "@/components/SectionShell"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
@@ -24,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
+  callAgain,
   detect,
   getIncident,
   monitorSocket,
@@ -72,6 +83,8 @@ const PREFILL = {
 const percent = (fraction: number | null | undefined) => (fraction == null ? "—" : `${(fraction * 100).toFixed(2)}%`)
 
 const PIPELINE = ["detected", "pending_verification", "verified", "report_sent", "call_in_progress", "closed"]
+// Statuses shown at another stage's place on the timeline: an unanswered call is still the call stage.
+const PIPELINE_ALIAS: Record<string, string> = { call_unanswered: "call_in_progress", closed_unconfirmed: "closed" }
 
 function StatusDot({ tone }: { tone: Tone }) {
   const color = { idle: "bg-slate-400", running: "bg-blue-600", done: "bg-green-600", malfunction: "bg-red-600" }[tone]
@@ -88,7 +101,7 @@ function StatusDot({ tone }: { tone: Tone }) {
 // Where an incident's status sits on the four universal states.
 function pipelineTone(status: string | undefined): Tone {
   if (!status || status === "false_positive") return "idle"
-  if (status === "report_send_failed" || status === "closed_unconfirmed") return "malfunction"
+  if (["report_send_failed", "closed_unconfirmed", "call_unanswered"].includes(status)) return "malfunction"
   if (status === "closed") return "done"
   return "running"
 }
@@ -148,7 +161,7 @@ export default function App() {
   const [employeePhone, setEmployeePhone] = useState("")
   const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
   // Shift details come from the fields, or from a scanned duty pass that fills them in.
-  const [inputMode, setInputMode] = useState<"manual" | "qr">("manual")
+  const [inputMode, setInputMode] = useState<"manual" | "qr">("qr")
   const [pass, setPass] = useState<DutyPass | null>(null)
   const applyPass = useCallback((scanned: DutyPass) => {
     setPass(scanned)
@@ -285,9 +298,16 @@ export default function App() {
     }
   }
 
+  // The dispatch call reached no one: place it again, on a clean transcript.
+  const retryCall = () => {
+    if (!incident) return
+    setFeed([])
+    void act("call", () => callAgain(incident.id))
+  }
+
   const stageIndex = useMemo(() => {
     if (!incident) return -1
-    const i = PIPELINE.indexOf(incident.status)
+    const i = PIPELINE.indexOf(PIPELINE_ALIAS[incident.status] ?? incident.status)
     return i === -1 ? 0 : i
   }, [incident])
 
@@ -319,6 +339,8 @@ export default function App() {
 
   const dispatch = incident?.authority_response
   const report = incident?.report
+  // the checkpoint's scenario, label to detail, as the backend put it on the report
+  const scenario = Object.entries((report?.scenario ?? {}) as Record<string, string>)
   const confidencePct = ((incident?.detection_confidence ?? 0) * 100).toFixed(2)
   const agency = incident && isAgency(incident.authority_agency) ? incident.authority_agency : null
   const authorityName = (lang === "ar" && incident?.authority_name_ar) || incident?.authority_name || null
@@ -339,20 +361,25 @@ export default function App() {
     : busy === "info"
       ? { label: t.report.generating, tone: "running" }
       : { label: t.report.pending, tone: "idle" }
-  const callStatus: { label: string; tone: Tone } = incident?.call_sid
-    ? ["closed", "closed_unconfirmed"].includes(incident.status)
-      ? { label: t.call.ended, tone: "done" }
-      : { label: t.call.inProgress, tone: "running" }
-    : { label: t.call.noCall, tone: "idle" }
+  const unanswered = incident?.status === "call_unanswered"
+  const callStatus: { label: string; tone: Tone } = unanswered
+    ? { label: t.call.unanswered, tone: "malfunction" }
+    : incident?.call_sid
+      ? ["closed", "closed_unconfirmed"].includes(incident.status)
+        ? { label: t.call.ended, tone: "done" }
+        : { label: t.call.inProgress, tone: "running" }
+      : { label: t.call.noCall, tone: "idle" }
   const judgmentStatus: { label: string; tone: Tone } = dispatch?.dispatch_confirmed
     ? { label: t.judgment.dispatchConfirmedPill, tone: "done" }
-    : incident?.status === "closed_unconfirmed"
-      ? { label: t.judgment.notConfirmedPill, tone: "malfunction" }
-      : incident?.status === "false_positive"
-        ? { label: t.status("false_positive"), tone: "idle" }
-        : incident
-          ? { label: t.judgment.awaitingDecision, tone: "running" }
-          : { label: t.judgment.pending, tone: "idle" }
+    : unanswered
+      ? { label: t.judgment.unansweredPill, tone: "malfunction" }
+      : incident?.status === "closed_unconfirmed"
+        ? { label: t.judgment.notConfirmedPill, tone: "malfunction" }
+        : incident?.status === "false_positive"
+          ? { label: t.status("false_positive"), tone: "idle" }
+          : incident
+            ? { label: t.judgment.awaitingDecision, tone: "running" }
+            : { label: t.judgment.pending, tone: "idle" }
 
   return (
     <DirectionProvider direction={lang === "ar" ? "rtl" : "ltr"}>
@@ -847,6 +874,7 @@ export default function App() {
                   <TabsList className="h-13! shrink-0 desk:h-8!">
                     <TabsTrigger value="record">{t.report.record}</TabsTrigger>
                     <TabsTrigger value="narrative">{t.report.narrative}</TabsTrigger>
+                    {scenario.length > 0 && <TabsTrigger value="situation">{t.report.situation}</TabsTrigger>}
                   </TabsList>
                   <span dir="ltr" className="truncate font-mono text-xs text-muted-foreground" title={report.incident_id}>
                     {report.incident_id}
@@ -900,6 +928,22 @@ export default function App() {
                     </RecordItem>
                   </dl>
                 </TabsContent>
+                {scenario.length > 0 && (
+                  <TabsContent value="situation" className="min-h-0 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
+                    <ScrollArea className="h-72 desk:h-full">
+                      <dl className="flex flex-col gap-2 pe-3">
+                        {scenario.map(([label, detail]) => (
+                          <div key={label} className="grid gap-0.5 sm:grid-cols-[8rem_minmax(0,1fr)] sm:gap-3">
+                            <dt className="text-xs text-muted-foreground">{label}</dt>
+                            <dd dir="auto" className="text-sm leading-snug">
+                              {detail}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </ScrollArea>
+                  </TabsContent>
+                )}
                 <TabsContent value="narrative" className="min-h-0 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
                   <ScrollArea className="h-72 desk:h-full">
                     <p dir="auto" className="whitespace-pre-wrap pe-3 text-sm leading-relaxed text-muted-foreground">
@@ -926,7 +970,31 @@ export default function App() {
             status={callStatus}
             className="desk:col-start-2 desk:row-start-2"
           >
-            {transcript.length ? (
+            {unanswered ? (
+              // Sheds the icon and then the explanation on a short panel, never the button.
+              <div className="flex min-h-0 flex-col desk:flex-1 desk:@container-size desk:[container-name:placeholder]">
+                <Empty className="min-h-0 gap-3 overflow-hidden p-4 desk:p-2">
+                  <EmptyHeader className="gap-1.5">
+                    <EmptyMedia className="mb-1 flex size-12 items-center justify-center rounded-full bg-red-600/10 text-red-700 box-short:hidden">
+                      <PhoneMissed className="size-6" aria-hidden />
+                    </EmptyMedia>
+                    <EmptyTitle role="heading" aria-level={3} className="text-sm font-semibold">
+                      {t.call.unansweredTitle}
+                    </EmptyTitle>
+                    <EmptyDescription className="text-xs/relaxed box-tiny:hidden">
+                      {dispatch?.outcome && <span className="block">{t.call.outcome(dispatch.outcome)}</span>}
+                      {t.call.unansweredBody}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                  <EmptyContent>
+                    <Button className="h-11 w-full text-sm sm:h-9" onClick={retryCall} disabled={busy !== null}>
+                      <PhoneOutgoing aria-hidden />
+                      {busy === "call" ? t.call.retrying : t.call.retry}
+                    </Button>
+                  </EmptyContent>
+                </Empty>
+              </div>
+            ) : transcript.length ? (
               <CallTranscript
                 lines={transcript}
                 className="h-80 desk:h-auto desk:flex-1"
@@ -972,12 +1040,17 @@ export default function App() {
                   <div className="min-w-0">
                     <h3 className="text-xs font-medium text-muted-foreground">{t.judgment.decision}</h3>
                     <p className="text-sm font-semibold">
-                      {dispatch
-                        ? dispatch.dispatch_confirmed
-                          ? t.judgment.dispatchConfirmed
-                          : t.judgment.dispatchNotConfirmed
-                        : t.judgment.noDecision}
+                      {unanswered
+                        ? t.judgment.unanswered
+                        : dispatch
+                          ? dispatch.dispatch_confirmed
+                            ? t.judgment.dispatchConfirmed
+                            : t.judgment.dispatchNotConfirmed
+                          : t.judgment.noDecision}
                     </p>
+                    {unanswered && dispatch?.outcome && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">{t.call.outcome(dispatch.outcome)}</p>
+                    )}
                     {dispatch?.authority_statement && (
                       <p
                         dir="auto"

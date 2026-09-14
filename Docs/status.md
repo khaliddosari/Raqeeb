@@ -58,10 +58,14 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is 24 tests, all passing: four drive the LangGraph workflow with mock providers,
-one drives the OpenAI call webhook over the on-disk checkpointer, four hold the call to Arabic and
-check the live transcript's ordering, and the rest cover the intake rules in `agent/intake.py`
-(which phone numbers and locations are accepted) and the class-to-agency routing. No other route, no WebSocket, and none of the frontend is tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
+The test suite is 30 tests, all passing: four drive the LangGraph workflow with mock providers,
+one drives the OpenAI call webhook over the on-disk checkpointer, five hold the call to Arabic
+(every checkpoint's spoken name and scenario included) and check the live transcript's ordering,
+five cover calls that reach no one (`tests/test_call_unanswered.py`: voicemail, a missed call,
+stale or forged Twilio webhooks, the retry, and a decision recorded before anyone spoke), and the
+rest cover the intake rules in `agent/intake.py` (which phone numbers and locations are accepted)
+and the class-to-agency routing. The detection and verification routes, the monitor WebSocket and
+all of the frontend are untested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
 
 ## How the pieces fit
 
@@ -110,15 +114,40 @@ G.711 mu-law the telephony media streams already carry.
 `signalwire` is a drop-in replacement for `twilio`; its compatibility API mirrors Twilio's and
 both reuse the same webhook routes.
 
+### A call that reaches no one
+
+On 2026-09-14 a dispatch call went to the callee's voicemail. The agent recorded a confirmation
+nobody gave, and the incident closed as dispatched. Three guards now stop that:
+
+- **Answering machine detection.** `place_call` asks Twilio for synchronous detection, so the
+  voice webhook arrives with `AnsweredBy`. A machine or fax gets `<Hangup/>` and the incident is
+  recorded as unanswered with outcome `voicemail`. A person, or an unsure verdict, is connected to
+  the agent as before. A person now hears a second or two of silence after answering while Twilio
+  decides, and detection costs a little extra per call.
+- **Calls that never connect.** The final status callback for a busy line, no answer or failure
+  resumes the incident as unanswered. Before this such an incident waited forever.
+- **No decision without a reply.** `observe_and_drive` refuses `record_dispatch_confirmation` until
+  the other side has taken a turn, and tells the model why so the call carries on. The instructions
+  also say a recording is never a decision.
+
+An unanswered call sets status `call_unanswered` and pauses at `await_call_retry`. The dashboard
+shows the reason with a "call again" button, which posts to `/api/incidents/{id}/call-again` and
+places a fresh call. Both Twilio webhooks now check `X-Twilio-Signature` against a URL rebuilt from
+`PUBLIC_BASE_URL`, because they change incidents and the call SID they name is public on the
+incident API. They also act only on the call the incident is waiting for, so a late event from an
+earlier attempt cannot end a retry. Outcomes are recorded on `authority_response.outcome`: answered
+calls carry `answered`.
+
 ### The call is Arabic end to end
 
 Nothing about the authority call is English. The instructions in
 `agent/voice/authority_prompts.py` are written in Arabic, tell the agent to stay in Saudi dialect
 even if the other party speaks English, and introduce it as Raqeeb at that checkpoint, calling the
 agency the class routes to. Every fact handed over is converted from its stored code first:
-`agent/arabic.py` holds the Arabic for classes, checkpoints, agencies and dates, and `name_ar` in
-`config/authority_mapping.yaml` names each responding unit. Keep `agent/arabic.py` identical to the
-dashboard's Arabic dictionary so the call and the screen use the same words.
+`agent/arabic.py` holds the Arabic for classes, agencies and dates, `agent/checkpoints.py` gives
+each checkpoint a spoken name in Arabic script (the dashboard may show a Latin brand name, the call
+never says one), and `name_ar` in `config/authority_mapping.yaml` names each responding unit. Class
+and agency words match the dashboard's Arabic dictionary, so the call and the screen agree.
 `tests/test_call_arabic.py` fails if any Latin text reaches the instructions other than the tool's
 function name and the incident reference code.
 
@@ -215,22 +244,35 @@ Do not reintroduce amber for "waiting": waiting on the pipeline is running.
 **Intake: employee number and location.** The employee number is required and must be a Saudi
 mobile. It is the employee's identifier on the report and the number the dispatch call rings,
 replacing the agency's configured number for that incident (`call_phone` in the graph state,
-applied in `determine_authority_node`). The location picker offers Terminals 1 to 5 and the
-Private Aviation Terminal. Both are validated in `agent/intake.py`, which is the gate; the
-frontend copy in `lib/intake.ts` only lets the form explain itself early. Change the two
-together.
+applied in `determine_authority_node`). Both are validated in `agent/intake.py`, which is the
+gate; the frontend copy in `lib/intake.ts` only lets the form explain itself early.
+
+**Checkpoints and their scenarios.** `agent/checkpoints.py` defines the six locations: the private
+aviation terminal, LEAP 2026, the Future Investment Initiative, the Saudi Falcons and Hunting
+Exhibition, Money20/20 Middle East and Black Hat MEA. Each has a code, a display name, a spoken name
+and a detailed demo scenario in Arabic (the event, the checkpoint, conditions, who carried the bag,
+what staff did, the responders' route and the nearest security post). The scenario is fictional
+context, not a claim about the real events. `generate_report` puts it on the report as `scenario`,
+the narrative model is told to use it, the call instructions carry it for the agent to answer
+questions from, and the dashboard shows it in the report's Situation tab. The dashboard's codes and
+display names in `lib/intake.ts` and `lib/i18n.ts` are copies; change them with the module.
 
 **Duty passes: scan instead of type.** The input card has two modes. Manual entry is the fields
 and the file upload. Scan pass uses the device camera (`components/PassScanner.tsx`, jsQR, or the
 browser's BarcodeDetector where it exists) to read a QR code that holds either a URL to a pass JSON
 or the JSON itself, and fills in the on-duty employee, their mobile and the checkpoint from it; the
-file upload is hidden and the bundled test image does the run. `lib/pass.ts` validates the pass
-with the same rules as manual entry and accepts English keys or the Arabic labels. The demo pass is
-`public/passes/leap-2026.json`, printed as `public/passes/leap-2026-qr.png`. Passes on Raqeeb's own
-domain are fetched from whichever deployment scans them, so the same code works locally. It
-publishes Khalid's mobile at a public URL, and scanning it makes the dispatch call ring that number.
-A pass location must be one of `CHECKPOINT_LOCATIONS`; `LEAP 2026 Exhibition` was added for it, so
-the backend has to be deployed before the frontend or those detections are refused.
+file upload is hidden and the bundled test image does the run. Scan mode is the default.
+`lib/pass.ts` validates the pass with the same rules as manual entry and accepts English keys or
+the Arabic labels. Passes on Raqeeb's own domain are fetched from whichever deployment scans them,
+so the same code works locally.
+
+**The pass chooser, https://raqeeb.khalid-ai.dev/passes.** One demo pass per checkpoint, each a JSON
+file and a QR code under `public/passes/`, and a page listing the scenarios that shows the chosen
+one's code large enough to hold up to a laptop camera; `/passes#fii` opens on a scenario. All of it
+is generated by `frontend/design/render_passes.py` from `agent/checkpoints.py`, so rerun that
+rather than editing the files, and `vercel.json` routes `/passes` to the page. Every pass carries
+Khalid's name and mobile, so the number is public at those URLs and every scanned run rings it.
+Deploy the backend before the frontend whenever checkpoints change, or the new codes are refused.
 
 **Agencies.** Guns and knives route to the police, pliers, scissors and wrenches to airport
 security, via the `agency` field in `config/authority_mapping.yaml`, surfaced to the dashboard
@@ -462,6 +504,17 @@ accepted. Read graph state only through `await get_incident_snapshot()`, never `
 **Twilio trial accounts only dial verified numbers.** A live call to an unverified destination
 fails without an obvious explanation.
 
+**A phone that silences unknown callers never rings.** Calls come from Yazeed's US Twilio number.
+iPhone's Silence Unknown Callers, Truecaller-style blocking or a Focus mode sends them straight to
+the carrier's voicemail, so the callee sees nothing. That is what happened on 2026-09-14. Save the
+Twilio number as a contact on any phone used for a demo.
+
+**Twilio webhook signatures depend on `PUBLIC_BASE_URL` being exact.** The routes rebuild the URL
+Twilio signed from that setting. If it stops matching the address Twilio is given (a trailing
+slash, a different host), every webhook returns 403 and no call connects. Calls placed before the
+unanswered-call change used a status callback URL without the incident, and those callbacks are
+ignored.
+
 **The model emits markdown and the UI strips it at render.** `frontend/src/lib/plaintext.ts`
 flattens it, and the report text uses `dir="auto"`. Both are safety nets over an unpinned
 prompt, not the fix. If you pin the prompt, leave them anyway.
@@ -504,9 +557,12 @@ https://raqeeb.khalid-ai.dev with a team member's mobile, and watch `uv run moda
 for `POST /api/openai/webhook -> 200` while it rings. If Twilio refuses to dial again, check the
 Saudi high-risk category in the geo permissions (see Where the project is).
 
-**Handle a failed dispatch call.** Catch the Twilio error in `twilio_outbound_call_node`, record
-a `call_failed` status on the incident, and return it to the dashboard, so the operator sees why
-instead of "Failed to fetch" (see Traps). If the call connects but the agent stays silent,
+**Handle a dispatch call Twilio refuses to place.** Calls that connect to no one are handled (see
+A call that reaches no one). What remains is an error from Twilio while placing the call: catch it
+in `twilio_outbound_call_node` and record it as outcome `failed`, so the operator gets the retry
+button instead of "Failed to fetch" (see Traps). After deploying the unanswered-call change, test
+it live twice: once answered, to confirm the added pause is acceptable, and once declined, to
+confirm the dashboard offers the retry. If the call connects but the agent stays silent,
 the webhook is the first suspect: check that OpenAI shows a delivery to the Modal URL, and that
 the webhook, key and project id all come from the same OpenAI project.
 

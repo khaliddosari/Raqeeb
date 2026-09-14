@@ -195,14 +195,17 @@ class OpenAIVoiceSession(VoiceSession):
 class OpenAILLMProvider(LLMProvider):
     async def generate_report_narrative(self, report_data: dict[str, Any]) -> str:
         prompt = (
-            "Write a detailed, professional airport security incident report from this JSON, "
+            "Write a detailed, professional security screening incident report from this JSON, "
             "IN ARABIC (Modern Standard Arabic, formal report register). This is the full written "
             "report record -- be thorough, not brief. Structure it as several short paragraphs "
             "under clear headers (use Arabic headers, e.g. as bold-style lines): "
             "(1) a summary of what happened; "
             "(2) detection and verification details (how it was found, the detector's confidence, "
             "and how the employee physically confirmed it); "
-            "(3) suspect and reporting details (who was involved, who reported it, any notes); "
+            "(3) suspect and reporting details (who was involved, who reported it, any notes), "
+            "including the operational context in the `scenario` object: the event, the checkpoint, "
+            "the conditions when it was found, what staff have already done, and how responders "
+            "should approach; "
             "(4) a risk assessment explaining WHY this item/situation warrants its severity level "
             "(reason about it, don't just state the level); "
             "(5) recommended next steps for the responding team, beyond the one-line action. "
@@ -216,7 +219,7 @@ class OpenAILLMProvider(LLMProvider):
 
     async def suggest_severity_and_action(self, report_data: dict[str, Any]) -> tuple[str, str]:
         prompt = (
-            "Given this airport security incident JSON, respond with ONLY a JSON object "
+            "Given this security screening incident JSON, respond with ONLY a JSON object "
             '{"severity": "low|medium|high|critical", "recommended_action": "<one sentence, in Arabic>"}. '
             "The severity value itself must stay one of those exact English words (it drives "
             "internal logic/styling) -- only recommended_action should be in Arabic. "

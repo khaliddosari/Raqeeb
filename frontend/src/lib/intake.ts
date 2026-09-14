@@ -1,14 +1,13 @@
-// Mirrors agent/intake.py. The backend is the gate and refuses anything else; these copies only
-// let the form say so before a request is sent.
+// Mirrors agent/intake.py, whose checkpoints and scenarios live in agent/checkpoints.py. The backend
+// is the gate and refuses anything else; these copies only let the form say so before a request is sent.
 
 export const CHECKPOINT_LOCATIONS = [
-  "Terminal 1",
-  "Terminal 2",
-  "Terminal 3",
-  "Terminal 4",
-  "Terminal 5",
   "Private Aviation Terminal",
   "LEAP 2026 Exhibition",
+  "Future Investment Initiative",
+  "Saudi Falcons and Hunting Exhibition",
+  "Money20/20 Middle East",
+  "Black Hat MEA",
 ] as const
 
 export type CheckpointLocation = (typeof CHECKPOINT_LOCATIONS)[number]

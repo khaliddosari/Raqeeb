@@ -130,6 +130,7 @@ const en = {
     pending: "pending",
     record: "Record",
     narrative: "Narrative",
+    situation: "Situation",
     incident: "Incident",
     detectedItem: "Detected item",
     confidence: "Confidence",
@@ -154,6 +155,12 @@ const en = {
     role: identity,
     emptyTitle: "No transcript yet",
     empty: "Turns appear here once a live call is running; mock telephony places no call.",
+    unanswered: "no answer",
+    unansweredTitle: "No answer",
+    unansweredBody: "The authority has not been notified. Make sure the phone can take the call, then call again.",
+    outcome: (outcome: string) => EN_CALL_OUTCOMES[outcome] ?? outcome,
+    retry: "Call again",
+    retrying: "Calling…",
   },
 
   judgment: {
@@ -161,6 +168,8 @@ const en = {
     caption: "Why the system acted as it did, and what the authority decided.",
     dispatchConfirmedPill: "dispatch confirmed",
     notConfirmedPill: "not confirmed",
+    unansweredPill: "no answer",
+    unanswered: "Authority not notified",
     awaitingDecision: "awaiting decision",
     pending: "pending",
     decision: "Authority decision",
@@ -205,6 +214,21 @@ const AR_SEVERITY: Record<string, string> = {
   critical: "حرجة",
 }
 
+// Why a dispatch call reached no one, as the backend records it on authority_response.outcome.
+const EN_CALL_OUTCOMES: Record<string, string> = {
+  voicemail: "Voicemail picked up, so the call was ended.",
+  no_answer: "Nobody picked up.",
+  busy: "The line was busy.",
+  failed: "The call could not be connected.",
+}
+
+const AR_CALL_OUTCOMES: Record<string, string> = {
+  voicemail: "ردّ البريد الصوتي، فأُنهي الاتصال.",
+  no_answer: "لم يرد أحد على الاتصال.",
+  busy: "الخط مشغول.",
+  failed: "تعذّر إجراء الاتصال.",
+}
+
 const AR_STATUS: Record<string, string> = {
   idle: "خامل",
   detected: "كُشف",
@@ -221,17 +245,18 @@ const AR_STATUS: Record<string, string> = {
   authority_responded: "ردّت الجهة",
   closed: "مغلقة",
   closed_unconfirmed: "مغلقة دون تأكيد",
+  call_unanswered: "لم يتم الرد",
   false_positive: "إنذار خاطئ",
 }
 
+// Display names, matching name_ar in agent/checkpoints.py (the call uses its spoken forms instead).
 const AR_LOCATIONS: Record<string, string> = {
-  "Terminal 1": "الصالة 1",
-  "Terminal 2": "الصالة 2",
-  "Terminal 3": "الصالة 3",
-  "Terminal 4": "الصالة 4",
-  "Terminal 5": "الصالة 5",
   "Private Aviation Terminal": "صالة الطيران الخاص",
   "LEAP 2026 Exhibition": "معرض LEAP 2026",
+  "Future Investment Initiative": "مبادرة مستقبل الاستثمار",
+  "Saudi Falcons and Hunting Exhibition": "معرض الصقور والصيد السعودي الدولي",
+  "Money20/20 Middle East": "Money20/20 الشرق الأوسط",
+  "Black Hat MEA": "بلاك هات الشرق الأوسط وأفريقيا",
 }
 
 const AR_AGENCIES: Record<string, string> = {
@@ -355,6 +380,7 @@ const ar: Dict = {
     pending: "قيد الانتظار",
     record: "السجل",
     narrative: "السرد",
+    situation: "الموقف",
     incident: "رقم الحادثة",
     detectedItem: "المادة المرصودة",
     confidence: "نسبة الثقة",
@@ -379,6 +405,12 @@ const ar: Dict = {
     role: lookup(AR_ROLES),
     emptyTitle: "لا يوجد نص بعد",
     empty: "تظهر الحوارات هنا عند بدء اتصال فعلي، ولا يُجري وضع المحاكاة أي اتصال.",
+    unanswered: "لم يتم الرد",
+    unansweredTitle: "لم يتم الرد",
+    unansweredBody: "لم تُبلَّغ الجهة بعد. تأكد أن الهاتف متاح لاستقبال الاتصال، ثم أعد الاتصال.",
+    outcome: lookup(AR_CALL_OUTCOMES),
+    retry: "إعادة الاتصال",
+    retrying: "جارٍ الاتصال…",
   },
 
   judgment: {
@@ -386,6 +418,8 @@ const ar: Dict = {
     caption: "لماذا تصرّف النظام على هذا النحو، وماذا قررت الجهة.",
     dispatchConfirmedPill: "تأكّد الإرسال",
     notConfirmedPill: "لم يتأكد",
+    unansweredPill: "لم يتم الرد",
+    unanswered: "لم تُبلَّغ الجهة",
     awaitingDecision: "بانتظار القرار",
     pending: "قيد الانتظار",
     decision: "قرار الجهة",
