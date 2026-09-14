@@ -109,9 +109,9 @@ async def resume_incident(incident_id: str, resume_value: Any) -> dict[str, Any]
     return {"state": result, "interrupt": _extract_interrupt(result)}
 
 
-def get_incident_snapshot(incident_id: str):
-    from agent.graph import workflow
-
-    if workflow._compiled is None:
-        raise RuntimeError("graph not initialised yet; no incident can exist")
-    return workflow._compiled.get_state(thread_config(incident_id))
+async def get_incident_snapshot(incident_id: str):
+    """Async on purpose. The on-disk AsyncSqliteSaver refuses synchronous reads from the event
+    loop it runs on, which is where every route runs, so get_state() raised InvalidStateError
+    and the OpenAI call webhook returned 500. Compiling here too means a request that lands on
+    a freshly started container still finds its incident in the checkpoint."""
+    return await (await get_compiled_graph()).aget_state(thread_config(incident_id))

@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-09-13. Written for a developer joining the project.
+Last updated: 2026-09-14. Written for a developer joining the project.
 
 Raqeeb detects prohibited items in X-ray baggage scans and drives the response: a YOLOv8-OBB
 model flags an item, an employee physically verifies it, and a voice agent collects details,
@@ -17,28 +17,21 @@ It is live. The dashboard is at **https://raqeeb.khalid-ai.dev** (Vercel) and ta
 backend at `https://khaliddosari2014--raqeeb-fastapi-app.modal.run` (Modal). Both deploy from
 `main`: Vercel rebuilds on every push, Modal only when someone runs `modal deploy`.
 
-**The project is moving to OpenAI only, and is mid-switch.** Know which half you are on:
+**The project runs on OpenAI and Twilio.** As of 2026-09-14:
 
-- **Local `.env`: `openai` + `twilio`, Gemini removed.** OpenAI writes the report
-  (`gpt-4o-mini`) and handles the authority call (`gpt-realtime`). The three OpenAI values,
-  `OPENAI_API_KEY`, `OPENAI_PROJECT_ID` and `OPENAI_WEBHOOK_SECRET`, are not filled in yet; the
-  key Yazeed shared is rejected by OpenAI. Until they are, the local app refuses to start, by
-  design.
-- **The live deployment on Modal: still `gemini` + `mock`.** It keeps working as before until
-  its secret is updated, so the live site still depends on the Gemini key, which ran out of
-  quota for part of 2026-09-13.
+- **Local `.env`: `openai` + `twilio`**, with all three OpenAI values filled in. OpenAI writes the
+  report (`gpt-4o-mini`) and handles the authority call (`gpt-realtime`). Its `PUBLIC_BASE_URL`
+  still names an old ngrok tunnel, so a local live call needs a fresh tunnel; calls are simpler
+  to run through Modal.
+- **Modal is configured for live calls.** Its logs from 2026-09-14 show Twilio fetching the call
+  instructions from Modal and OpenAI posting `realtime.call.incoming` to Modal, so both
+  callbacks already point there. The call still failed, because of a bug fixed on 2026-09-14
+  and not yet deployed (see the checkpointer trap below).
 - **Twilio credentials are Yazeed's full account**, which owns a voice-capable number; calls
-  bill to him. Khalid's own Twilio account is a trial with no number. The credentials are in the
-  local `.env` only, not the Modal secret.
-- **Undecided: where the OpenAI webhook points.** OpenAI and Twilio both call back into the
-  server, so live calls need a public HTTPS `PUBLIC_BASE_URL`, and the webhook registered for
-  `realtime.call.incoming` must point at that same address. The Modal URL is the recommended
-  target because it never changes; a local ngrok address only works while that machine and
-  tunnel are up.
+  bill to him. Khalid's own Twilio account is a trial with no number.
 
-Everything up to `18ada01` is merged to `main` and live. The newest dashboard work (the
-single-screen layout, Arabic mode and Thmanyah Sans) sits uncommitted on the local branch
-`single-page-dashboard-design`, so the live site still shows the previous layout.
+The dashboard redesign (single-screen layout, Arabic mode, Thmanyah fonts, placeholders, intake
+fields and agency routing) is merged to `main` as of `52c2b57`.
 `origin/agentVoice` still exists but is fully contained in `main` and is safe to delete.
 
 Four people are on the project. Nawaf built the report generator. Yazeed built the voice
@@ -46,10 +39,10 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is 19 tests, all passing: four drive the LangGraph workflow with mock providers,
-and the rest cover the intake rules in `agent/intake.py` (which phone numbers and locations are
-accepted) and the class-to-agency routing. No route, no WebSocket, and none of the frontend is
-tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
+The test suite is 20 tests, all passing: four drive the LangGraph workflow with mock providers,
+one drives the OpenAI call webhook over the on-disk checkpointer, and the rest cover the intake
+rules in `agent/intake.py` (which phone numbers and locations are accepted) and the
+class-to-agency routing. No other route, no WebSocket, and none of the frontend is tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
 
 ## How the pieces fit
 
@@ -337,8 +330,13 @@ switching telephony on: an allowlist of the team's numbers, or a demo passcode.
 account. Move it between machines privately (USB or an encrypted note), never through chat or
 email, and never commit it; `.env` is gitignored and must stay that way.
 
-**Tests use in-memory checkpoints.** `tests/conftest.py` sets `CHECKPOINT_DB=:memory:` so each
-run starts clean. Anything that changes how the checkpointer is built should keep that path.
+**Tests use in-memory checkpoints, which hid a real bug.** `tests/conftest.py` sets
+`CHECKPOINT_DB=:memory:` so each run starts clean, but the in-memory saver tolerates things the
+on-disk one does not. `AsyncSqliteSaver`, which Modal runs, raises `InvalidStateError` on any
+synchronous read from the event loop, and `get_state()` from a route is exactly that. It made
+the OpenAI call webhook return 500, so every live call rang, reached OpenAI and was never
+accepted. Read graph state only through `await get_incident_snapshot()`, never `get_state()`.
+`tests/test_call_webhook.py` runs the webhook over the on-disk saver to keep it that way.
 
 **Twilio trial accounts only dial verified numbers.** A live call to an unverified destination
 fails without an obvious explanation.
@@ -376,12 +374,12 @@ Hosting is Modal for the backend, Vercel for the frontend, and Cloudflare for DN
 
 ## Future work
 
-**DEFERRED: test the SIP webhook.** Known gap, consciously postponed on 2026-09-12 to get
-deployment done first. Pick this up next. It matters more now: with OpenAI as the only
-provider, this webhook is the sole way a dispatch call ever connects.
+**Test the webhook's rejection cases.** `tests/test_call_webhook.py` now covers the success path:
+a correctly signed `realtime.call.incoming` is accepted and matched to its incident, over the
+on-disk checkpointer. The refusals are still untested.
 
-The signature verification in `agent/routes/openai_routes.py` is security relevant and has
-only ever been checked by hand. Those manual checks did pass: a correctly signed request is
+The signature verification in `agent/routes/openai_routes.py` is security relevant and its
+refusals have only ever been checked by hand. Those manual checks did pass: a correctly signed request is
 accepted, forgeries signed with an empty or wrong key are rejected with 400, a stale
 timestamp is rejected, and an unset secret fails closed with 500 rather than verifying
 against an empty key. None of it is in `tests/`, so nothing stops a regression, and the bug
@@ -393,19 +391,16 @@ in `AgencyMark.tsx` at them, once the team has artwork it is allowed to use.
 
 **Gate caller-supplied numbers** before live telephony is enabled on the public site (see Traps).
 
-**Finish the OpenAI switch.** In order:
+**Finish the OpenAI switch.** The keys, the webhook and the Modal secret are in place (see
+"Where the project is"). What remains:
 
-1. Get `OPENAI_API_KEY`, `OPENAI_PROJECT_ID` and `OPENAI_WEBHOOK_SECRET`, all from the same
-   OpenAI project. The key and project id come from the dashboard; the secret is shown once,
-   when you create a webhook for `realtime.call.incoming`.
-2. Point that webhook at `https://khaliddosari2014--raqeeb-fastapi-app.modal.run/api/openai/webhook`,
-   unless the team decides to run calls from a local tunnel instead.
-3. Rebuild the Modal secret with `LLM_PROVIDER=openai`, `TELEPHONY_PROVIDER=twilio`, the three
-   OpenAI values, the three Twilio values, the `AUTHORITY_*` overrides, `PUBLIC_BASE_URL` set to
-   the Modal URL, and `ALLOWED_ORIGINS` set to `https://raqeeb.khalid-ai.dev`. CORS is currently
-   the `*` wildcard, so any site can call the API.
-4. Set `min_containers=1` in `modal_app.py` for demo sessions, so a cold start does not delay
-   the webhook while a call is ringing, then redeploy.
+1. Deploy the webhook fix with `uv run modal deploy modal_app.py`, then place one call and check
+   the Modal logs for `POST /api/openai/webhook -> 200`.
+2. Confirm `ALLOWED_ORIGINS` in the Modal secret is `https://raqeeb.khalid-ai.dev`; without it
+   CORS is the `*` wildcard and any site can call the API.
+3. Set `min_containers=1` in `modal_app.py` for demo sessions, so a cold start does not delay
+   the webhook while a call is ringing. `scaledown_window` is already five minutes, so a
+   container stays up for the length of a call once it has started.
 
 **Protect the model quota on the public site.** Rate limiting, or a demo mode that replays a
 stored report, before sharing the link widely.
