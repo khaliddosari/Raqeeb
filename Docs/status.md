@@ -43,8 +43,9 @@ with `gpt-4o-mini`, posts it to the authority endpoint, and places a real phone 
 - **Twilio credentials are Yazeed's full account**, which owns a voice-capable number; calls
   bill to him. Khalid's own Twilio account is a trial with no number. The credentials are in
   both the local `.env` and the Modal secret.
-- **The call rings the employee's mobile, not the agency.** The number typed into the dashboard
-  replaces the configured `AUTHORITY_*_PHONE` for that incident. The configured numbers are used
+- **The call rings the employee's mobile, not the agency.** The mobile of the employee picked on
+  the dashboard, or a one-time number typed for a single run, replaces the configured
+  `AUTHORITY_*_PHONE` for that incident. The configured numbers are used
   only when a request arrives without one.
 
 Everything is merged to `main`: the redesign, the Arabic call, the live transcript and the
@@ -58,7 +59,8 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is 30 tests, all passing: four drive the LangGraph workflow with mock providers,
+The test suite is 31 tests, all passing: five drive the LangGraph workflow with mock providers
+(one through the manual-info route, where a scanned pass's event replaces the location),
 one drives the OpenAI call webhook over the on-disk checkpointer, five hold the call to Arabic
 (every checkpoint's spoken name and scenario included) and check the live transcript's ordering,
 five cover calls that reach no one (`tests/test_call_unanswered.py`: voicemail, a missed call,
@@ -241,11 +243,15 @@ with a dot that repeats the state so colour is never the only cue. `StatusPill` 
 type are in `SectionShell.tsx`; `pipelineTone()` in `App.tsx` maps backend statuses onto them.
 Do not reintroduce amber for "waiting": waiting on the pipeline is running.
 
-**Intake: employee number and location.** The employee number is required and must be a Saudi
-mobile. It is the employee's identifier on the report and the number the dispatch call rings,
-replacing the agency's configured number for that incident (`call_phone` in the graph state,
-applied in `determine_authority_node`). Both are validated in `agent/intake.py`, which is the
-gate; the frontend copy in `lib/intake.ts` only lets the form explain itself early.
+**Intake: employee and location.** The on-duty employee is picked from a dropdown of the four
+team members (`frontend/src/lib/employees.ts`, names and mobiles). Their mobile is the employee's
+identifier on the report and the number the dispatch call rings, replacing the agency's configured
+number for that incident (`call_phone` in the graph state, applied in `determine_authority_node`).
+Under the dropdown is a greyed one-time number field whose placeholder is the number that will
+ring; a Saudi mobile typed there is used for the next run instead and then cleared. The backend
+still requires a Saudi mobile and a known location, validated in `agent/intake.py`, which is the
+gate; the frontend copy in `lib/intake.ts` only lets the form explain itself early. The four
+mobiles are in the public JavaScript bundle.
 
 **Checkpoints and their scenarios.** `agent/checkpoints.py` defines the six locations: the private
 aviation terminal, LEAP 2026, the Future Investment Initiative, the Saudi Falcons and Hunting
@@ -257,22 +263,27 @@ the narrative model is told to use it, the call instructions carry it for the ag
 questions from, and the dashboard shows it in the report's Situation tab. The dashboard's codes and
 display names in `lib/intake.ts` and `lib/i18n.ts` are copies; change them with the module.
 
-**Duty passes: scan instead of type.** The input card has two modes. Manual entry is the fields
-and the file upload. Scan pass uses the device camera (`components/PassScanner.tsx`, jsQR, or the
-browser's BarcodeDetector where it exists) to read a QR code that holds either a URL to a pass JSON
-or the JSON itself, and fills in the on-duty employee, their mobile and the checkpoint from it; the
-file upload is hidden and the bundled test image does the run. Scan mode is the default.
-`lib/pass.ts` validates the pass with the same rules as manual entry and accepts English keys or
-the Arabic labels. Passes on Raqeeb's own domain are fetched from whichever deployment scans them,
-so the same code works locally.
+**Suspect passes: scan instead of type.** The only human decision before the report is the
+employee confirming or rejecting the detection. After a confirm, the suspect details step opens on
+Scan pass, which uses the device camera (`components/PassScanner.tsx`, jsQR, or the browser's
+BarcodeDetector where it exists) to read the pass the bag carrier shows: a boarding pass or event
+badge whose QR code holds a URL to a pass JSON, or the JSON itself. It fills in the suspect's name
+and ID number and names the event the pass was issued for. Submitting sends that event as
+`location` to the manual-info route, which validates it and replaces the location stamped at
+detection, so the report and the call carry that event's scenario; the dashboard's location field
+switches to it too. The Manual entry tab keeps the typed name, ID number and notes, and leaves the
+location alone. `lib/pass.ts` accepts English keys or the Arabic labels. Passes on Raqeeb's own
+domain are fetched from whichever deployment scans them, so the same code works locally.
 
 **The pass chooser, https://raqeeb.khalid-ai.dev/passes.** One demo pass per checkpoint, each a JSON
 file and a QR code under `public/passes/`, and a page listing the scenarios that shows the chosen
-one's code large enough to hold up to a laptop camera; `/passes#fii` opens on a scenario. All of it
-is generated by `frontend/design/render_passes.py` from `agent/checkpoints.py`, so rerun that
-rather than editing the files, and `vercel.json` routes `/passes` to the page. Every pass carries
-Khalid's name and mobile, so the number is public at those URLs and every scanned run rings it.
-Deploy the backend before the frontend whenever checkpoints change, or the new codes are refused.
+one's code large enough to hold up to a laptop camera; `/passes#fii` opens on a scenario. Each pass
+belongs to the fictional bag carrier its scenario describes (`suspect` in `agent/checkpoints.py`:
+name, ID number and pass type). All of it is generated by `frontend/design/render_passes.py`, so
+rerun that rather than editing the files, and `vercel.json` routes `/passes` to the page. The page
+loads its images by absolute path, because it is also served at `/passes` without a trailing slash.
+Deploy the backend before the frontend whenever checkpoints or the manual-info route change, or the
+dashboard's requests are refused.
 
 **Agencies.** Guns and knives route to the police, pliers, scissors and wrenches to airport
 security, via the `agency` field in `config/authority_mapping.yaml`, surfaced to the dashboard
@@ -450,8 +461,8 @@ project setup. Do not copy the local value into the Modal secret.
 run places a real call billed per minute by both OpenAI Realtime and Twilio. Anyone who finds
 the link can do this.
 
-**Live telephony is on, and the public site can ring any Saudi mobile.** The number typed into
-the dashboard is dialled by the voice agent. Validation limits it to Saudi mobiles, but anyone
+**Live telephony is on, and the public site can ring any Saudi mobile.** The one-time number
+typed into the dashboard is dialled by the voice agent, and so is any number sent to the API. Validation limits it to Saudi mobiles, but anyone
 who finds the site can make it call someone else, on Yazeed's Twilio account. This is no longer
 hypothetical. Gate it (an allowlist of the team's numbers, or a demo passcode), or switch the
 Modal secret back to `TELEPHONY_PROVIDER=mock` when nobody is testing.

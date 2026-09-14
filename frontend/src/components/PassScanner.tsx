@@ -1,7 +1,7 @@
 import jsQR from "jsqr"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { readDutyPass, type DutyPass } from "@/lib/pass"
+import { readSuspectPass, type SuspectPass } from "@/lib/pass"
 import { cn } from "@/lib/utils"
 
 type Labels = {
@@ -23,11 +23,11 @@ type BarcodeDetectorLike = { detect: (source: CanvasImageSource) => Promise<{ ra
 const SCAN_INTERVAL_MS = 150
 const FRAME_WIDTH = 640
 
-// Reads a duty pass QR code through the device camera. The camera runs only while this is on
+// Reads a suspect's pass QR code through the device camera. The camera runs only while this is on
 // screen and stops the moment a valid pass is read or the component unmounts. Decoding uses the
 // browser's BarcodeDetector where it exists (Chrome on macOS and Android) and jsQR elsewhere,
 // which includes Chrome on Windows.
-export function PassScanner({ onPass, labels }: { onPass: (pass: DutyPass) => void; labels: Labels }) {
+export function PassScanner({ onPass, labels }: { onPass: (pass: SuspectPass) => void; labels: Labels }) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const onPassRef = useRef(onPass)
   const [status, setStatus] = useState<Status>("starting")
@@ -76,7 +76,7 @@ export function PassScanner({ onPass, labels }: { onPass: (pass: DutyPass) => vo
       // the same rejected code stays in front of the camera for a while; do not refetch it every frame
       if (text && text !== rejected) {
         setStatus("reading")
-        const result = await readDutyPass(text)
+        const result = await readSuspectPass(text)
         if (cancelled) return
         if (result.ok) {
           setNotice(null)

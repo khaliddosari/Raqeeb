@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from agent import monitor
 from agent.graph.runner import call_again, resume_incident
+from agent.intake import validate_location
 from agent.schemas import ManualSuspectInfoInput, VerificationInput
 
 router = APIRouter(prefix="/api", tags=["verification"])
@@ -29,6 +30,11 @@ async def submit_manual_info(incident_id: str, info: ManualSuspectInfoInput):
         "suspect_phone_number": "غير متوفر",
         "employee_notes": info.notes or "لا توجد ملاحظات إضافية",
     }
+    if info.location:
+        try:
+            fields["location"] = validate_location(info.location)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
     result = await resume_incident(incident_id, {"fields": fields})
     return {"incident_id": incident_id, "interrupt": result["interrupt"], "status": result["state"].get("status")}
 

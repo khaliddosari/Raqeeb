@@ -36,6 +36,9 @@ class ManualSuspectInfoInput(BaseModel):
     suspect_name: str
     suspect_id_number: str
     notes: str | None = None
+    # From a scanned pass: the event it was issued for, which replaces the location stamped at
+    # detection, so the report and the call carry that event's scenario.
+    location: str | None = None
 
 
 class AuthorityCallResult(BaseModel):

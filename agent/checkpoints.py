@@ -3,7 +3,7 @@
 This is the one backend source for locations: agent/intake.py validates against it, the call
 reads the spoken names from it, and the report and the call both carry its scenario. The
 dashboard keeps its own copies of the codes and display names (frontend/src/lib/intake.ts and
-lib/i18n.ts), and frontend/design/render_passes.py builds the duty passes and the pass chooser
+lib/i18n.ts), and frontend/design/render_passes.py builds the demo passes and the pass chooser
 page from this file, so change them together.
 
 The scenarios are fictional operational context for demonstrations: which gate, how crowded, who
@@ -18,6 +18,17 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class Suspect:
+    """Fictional. Only frontend/design/render_passes.py reads this: the dashboard scans the pass
+    and sends the name and number like typed details, so the backend never looks it up."""
+
+    name: str
+    id_number: str
+    pass_type: str
+    """What the pass is, matching how the scenario's bag carrier line describes it."""
+
+
+@dataclass(frozen=True)
 class Checkpoint:
     code: str
     """Stored on the incident and sent by the dashboard."""
@@ -29,6 +40,8 @@ class Checkpoint:
     """frontend/public/passes/<slug>.json and its QR code."""
     scenario: tuple[tuple[str, str], ...]
     """Ordered (label, detail) pairs, in Arabic."""
+    suspect: Suspect
+    """The bag carrier the scenario describes, as printed on the pass they show at the checkpoint."""
 
 
 CHECKPOINTS: tuple[Checkpoint, ...] = (
@@ -48,6 +61,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من البوابة الجانبية لساحة الطائرات مباشرة إلى منطقة التفتيش"),
             ("أقرب نقطة أمنية", "مكتب أمن الصالة على بعد نحو 40 مترًا"),
         ),
+        suspect=Suspect(name="فيصل العتيبي", id_number="1093847562", pass_type="بطاقة صعود الطائرة"),
     ),
     Checkpoint(
         code="LEAP 2026 Exhibition",
@@ -65,6 +79,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من مدخل الخدمات الخلفي عبر الممر المخصص للطوارئ"),
             ("أقرب نقطة أمنية", "غرفة العمليات الأمنية للمعرض خلف البوابة رقم 3"),
         ),
+        suspect=Suspect(name="سلطان القحطاني", id_number="1128459307", pass_type="بطاقة دخول عامة"),
     ),
     Checkpoint(
         code="Future Investment Initiative",
@@ -82,6 +97,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من مدخل الخدمة الشرقي تفاديًا لممر الوفود"),
             ("أقرب نقطة أمنية", "مركز القيادة الأمنية في الطابق الأرضي"),
         ),
+        suspect=Suspect(name="ماجد الحربي", id_number="1076238415", pass_type="بطاقة وفد"),
     ),
     Checkpoint(
         code="Saudi Falcons and Hunting Exhibition",
@@ -99,6 +115,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من بوابة المركبات الخدمية المجاورة لمواقف العارضين"),
             ("أقرب نقطة أمنية", "خيمة الأمن والسلامة بجوار البوابة رقم 1"),
         ),
+        suspect=Suspect(name="تركي الشمري", id_number="1049571836", pass_type="بطاقة زائر عام"),
     ),
     Checkpoint(
         code="Money20/20 Middle East",
@@ -116,6 +133,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من رصيف التحميل الخلفي المخصص للعارضين"),
             ("أقرب نقطة أمنية", "نقطة الأمن عند رصيف التحميل"),
         ),
+        suspect=Suspect(name="رامي حداد", id_number="2345718690", pass_type="بطاقة جناح"),
     ),
     Checkpoint(
         code="Black Hat MEA",
@@ -133,6 +151,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من ممر الطوارئ الغربي المؤدي مباشرة إلى بوابة المشاركين"),
             ("أقرب نقطة أمنية", "مكتب أمن القاعة بجوار منطقة التسجيل"),
         ),
+        suspect=Suspect(name="نايف الغامدي", id_number="1102684759", pass_type="بطاقة ورشة"),
     ),
 )
 

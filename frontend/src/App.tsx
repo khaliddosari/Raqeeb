@@ -9,6 +9,7 @@ import {
   Play as PlayIcon,
   QrCode,
   ScanLine,
+  UserRound,
 } from "lucide-react"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AgencyMark } from "@/components/AgencyMark"
@@ -47,7 +48,8 @@ import {
 import { isAgency } from "@/lib/agency"
 import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
 import { CHECKPOINT_LOCATIONS, normalizeSaudiMobile, type CheckpointLocation } from "@/lib/intake"
-import type { DutyPass } from "@/lib/pass"
+import { EMPLOYEES, employeeById } from "@/lib/employees"
+import type { SuspectPass } from "@/lib/pass"
 import { toPlainText } from "@/lib/plaintext"
 import { cn } from "@/lib/utils"
 
@@ -72,9 +74,8 @@ const TEST_IMAGE_URL = `${import.meta.env.BASE_URL}test-image.png`
 // The QR decoder is only needed once someone opens scan mode, so it loads then, not with the page.
 const PassScanner = lazy(() => import("@/components/PassScanner").then((m) => ({ default: m.PassScanner })))
 
-// Prefilled demo values, Arabic in both interface languages: everything that reaches the call is Arabic.
+// Prefilled manual suspect details, Arabic in both interface languages: everything that reaches the call is Arabic.
 const PREFILL = {
-  employee: "خالد آل دوسري",
   suspectName: "فيصل",
   suspectId: "1093847562",
   notes: "المشتبه به متعاون وهادئ",
@@ -156,17 +157,17 @@ function RecordItem({
 export default function App() {
   const [lang, setLang] = useState<Lang>(initialLang)
   const t = STRINGS[lang]
-  const [employeeName, setEmployeeName] = useState(PREFILL.employee)
-  // Required: the employee's identifier on the report, and the mobile the dispatch call rings.
-  const [employeePhone, setEmployeePhone] = useState("")
+  // The on-duty employee, picked from the team. Their mobile takes the dispatch call, unless a
+  // one-time number is typed, which is used for the next run and then cleared.
+  const [employeeId, setEmployeeId] = useState(EMPLOYEES[0].id)
+  const [oneTimePhone, setOneTimePhone] = useState("")
   const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
-  // Shift details come from the fields, or from a scanned duty pass that fills them in.
-  const [inputMode, setInputMode] = useState<"manual" | "qr">("qr")
-  const [pass, setPass] = useState<DutyPass | null>(null)
-  const applyPass = useCallback((scanned: DutyPass) => {
-    setPass(scanned)
-    setEmployeeName(scanned.employeeName)
-    setEmployeePhone(scanned.employeePhone)
+  // Suspect details come from the pass the bag carrier shows, or are typed. A scanned pass also
+  // names its event, which becomes the incident's location.
+  const [suspectMode, setSuspectMode] = useState<"manual" | "qr">("qr")
+  const [suspectPass, setSuspectPass] = useState<SuspectPass | null>(null)
+  const applySuspectPass = useCallback((scanned: SuspectPass) => {
+    setSuspectPass(scanned)
     setLocation(scanned.location)
   }, [])
   const [file, setFile] = useState<File | null>(null)
@@ -232,10 +233,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incident?.id])
 
-  const phoneE164 = normalizeSaudiMobile(employeePhone)
-  const phoneInvalid = employeePhone.trim() !== "" && phoneE164 === null
-  // in scan mode the test image waits for a pass, even if the manual fields were filled earlier
-  const detailsReady = inputMode === "qr" ? pass !== null : phoneE164 !== null
+  const employee = employeeById(employeeId)
+  const oneTimeTyped = oneTimePhone.trim() !== ""
+  const oneTimeInvalid = oneTimeTyped && normalizeSaudiMobile(oneTimePhone) === null
+  // the number the dispatch call rings for the next run
+  const callPhone = normalizeSaudiMobile(oneTimeTyped ? oneTimePhone : employee.phone)
+  const detailsReady = callPhone !== null
 
   const onFile = (f: File | null) => {
     setFile(f)
@@ -251,8 +254,11 @@ export default function App() {
     setSuspectName(PREFILL.suspectName)
     setSuspectId(PREFILL.suspectId)
     setSuspectNotes(PREFILL.notes)
+    setSuspectMode("qr")
+    setSuspectPass(null)
     try {
-      const res = await detect(file, employeeName, phoneE164, location)
+      const res = await detect(file, employee.name.ar, callPhone, location)
+      setOneTimePhone("")
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -269,13 +275,16 @@ export default function App() {
     setSuspectName(PREFILL.suspectName)
     setSuspectId(PREFILL.suspectId)
     setSuspectNotes(PREFILL.notes)
+    setSuspectMode("qr")
+    setSuspectPass(null)
     try {
       const blob = await (await fetch(TEST_IMAGE_URL)).blob()
       const testFile = new File([blob], "test-image.png", { type: blob.type || "image/png" })
       setFile(testFile)
       setPreviewUrl(TEST_IMAGE_URL)
       setAnnotated(null)
-      const res = await detect(testFile, employeeName, phoneE164, location)
+      const res = await detect(testFile, employee.name.ar, callPhone, location)
+      setOneTimePhone("")
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -499,171 +508,119 @@ export default function App() {
               {/* input */}
               <ScrollArea className="desk:h-full desk:min-h-0">
                 <div className="flex flex-col gap-3 desk:gap-2 desk:p-1 desk:pe-3 desk-short:gap-1.5">
-                  {/* Two ways in: type the shift details, or scan a duty pass that carries them. Scanning
-                      replaces the fields and the file upload; the bundled test image serves both. */}
-                  <Tabs value={inputMode} onValueChange={(value) => setInputMode(value as "manual" | "qr")} className="gap-2 desk:gap-1.5">
-                    <TabsList aria-label={t.inference.modeLabel} className="h-13! w-full desk:h-8!">
-                      <TabsTrigger value="manual">
-                        <Keyboard aria-hidden="true" />
-                        {t.inference.modeManual}
-                      </TabsTrigger>
-                      <TabsTrigger value="qr">
-                        <QrCode aria-hidden="true" />
-                        {t.inference.modeQr}
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="manual" className="flex flex-col gap-3 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50 desk:gap-2 desk-short:gap-1.5">
-                      <div className="grid gap-1.5 desk:gap-1">
-                        <Label htmlFor="emp-name">{t.inference.employee}</Label>
-                        <Input
-                          id="emp-name"
-                          value={employeeName}
-                          onChange={(e) => setEmployeeName(e.target.value)}
-                          autoComplete="name"
-                          className="h-11 text-center desk:h-8"
-                        />
-                      </div>
-                      <div className="grid gap-1.5 desk:gap-1">
-                        <Label htmlFor="emp-phone">
-                          {t.inference.employeeNumber}
-                          <span aria-hidden="true" className="text-destructive">
-                            *
-                          </span>
-                        </Label>
-                        <Input
-                          id="emp-phone"
-                          type="tel"
-                          inputMode="tel"
-                          autoComplete="tel"
-                          dir="ltr"
-                          value={employeePhone}
-                          onChange={(e) => setEmployeePhone(e.target.value)}
-                          placeholder={t.inference.employeeNumberPlaceholder}
-                          required
-                          aria-invalid={phoneInvalid || undefined}
-                          aria-describedby="emp-phone-help"
-                          className="h-11 text-center font-mono tabular-nums desk:h-8"
-                        />
-                        <p
-                          id="emp-phone-help"
-                          className={
-                            phoneInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground desk:sr-only"
-                          }
-                        >
-                          {phoneInvalid ? t.inference.employeeNumberInvalid : t.inference.employeeNumberHelp}
-                        </p>
-                      </div>
-                      <div className="grid gap-1.5 desk:gap-1">
-                        <Label id="location-label" className="desk-short:sr-only">{t.inference.location}</Label>
-                        <Select value={location} onValueChange={(v) => v && setLocation(v as CheckpointLocation)}>
-                          <SelectTrigger
-                            aria-labelledby="location-label"
-                            className="w-full data-[size=default]:h-11 desk:data-[size=default]:h-8"
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label id="employee-label">{t.inference.employee}</Label>
+                    <Select value={employeeId} onValueChange={(v) => v && setEmployeeId(v)}>
+                      <SelectTrigger
+                        aria-labelledby="employee-label"
+                        className="w-full data-[size=default]:h-11 desk:data-[size=default]:h-8"
+                      >
+                        <SelectValue className="justify-center gap-1.5 text-center">
+                          {(value: string) => (
+                            <>
+                              <UserRound aria-hidden="true" className="size-3.5 text-primary" />
+                              <bdi>{employeeById(value).name[lang]}</bdi>
+                            </>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EMPLOYEES.map((person) => (
+                          <SelectItem
+                            key={person.id}
+                            value={person.id}
+                            className="min-h-10 desk:min-h-0 [&>div:first-child]:justify-between [&>div:first-child]:gap-4"
                           >
-                            <SelectValue className="justify-center gap-1.5 text-center">
-                              {(value: string) => (
-                                <>
-                                  <MapPin aria-hidden="true" className="size-3.5 text-primary" />
-                                  {t.location(value)}
-                                </>
-                              )}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {CHECKPOINT_LOCATIONS.map((value) => (
-                              <SelectItem key={value} value={value} className="min-h-10 desk:min-h-0">
-                                {t.location(value)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="grid gap-1.5 desk:gap-1">
-                        <Label htmlFor="frame" className="desk-short:sr-only">{t.inference.frame}</Label>
-                        {/* The native picker's "Choose File / No file chosen" is browser chrome that follows the
-                            OS language, not the page. The real input stays for keyboard and screen readers, and
-                            announces the chosen file through frame-status; the pill is its visible face. */}
-                        <input
-                          id="frame"
-                          type="file"
-                          accept="image/*"
-                          aria-describedby="frame-status"
-                          className="peer sr-only"
-                          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-                        />
-                        <label
-                          htmlFor="frame"
-                          aria-hidden="true"
-                          className="font-ornate flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-lg bg-secondary px-3 text-sm font-medium text-secondary-foreground ring-1 ring-primary/15 transition-colors hover:bg-accent peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 desk:h-8"
-                        >
-                          <span className="truncate">{t.inference.chooseFile}</span>
-                        </label>
-                        <span id="frame-status" className="sr-only">
-                          {file ? file.name : t.inference.noFile}
-                        </span>
-                      </div>
-                      <Button onClick={runDetection} disabled={!file || busy !== null || !phoneE164} className="h-11 w-full desk:h-8">
-                        {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
-                      </Button>
-                    </TabsContent>
-                    <TabsContent value="qr" className="rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
-                      {inputMode === "qr" &&
-                        (pass ? (
-                          <div className="flex flex-col gap-2 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12 desk-short:p-2.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <h3 className="flex items-center gap-1.5 text-xs font-semibold">
-                                <BadgeCheck aria-hidden="true" className="size-4 text-green-600" />
-                                {t.inference.passTitle}
-                              </h3>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setPass(null)}
-                                className="h-11 gap-1.5 text-xs desk:h-7"
-                              >
-                                <ScanLine aria-hidden="true" className="size-3.5" />
-                                {t.inference.rescan}
-                              </Button>
-                            </div>
-                            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 desk-short:gap-y-1.5">
-                              <RecordItem label={t.inference.dutyEmployee} title={pass.employeeName}>
-                                <bdi>{pass.employeeName}</bdi>
-                              </RecordItem>
-                              <RecordItem label={t.inference.employeeNumber}>
-                                <span dir="ltr" className="font-mono tabular-nums">
-                                  {pass.employeePhone}
-                                </span>
-                              </RecordItem>
-                              <RecordItem label={t.inference.location} title={t.location(pass.location)} className="col-span-2">
-                                <span className="inline-flex items-center gap-1 align-middle">
-                                  <MapPin aria-hidden="true" className="size-3.5 text-primary" />
-                                  <bdi>{t.location(pass.location)}</bdi>
-                                </span>
-                              </RecordItem>
-                            </dl>
-                          </div>
-                        ) : (
-                          <Suspense fallback={<Skeleton className="aspect-video w-full rounded-xl desk:aspect-auto desk:h-40 desk-short:h-32 desk-tight:h-24" />}>
-                            <PassScanner
-                              onPass={applyPass}
-                              labels={{
-                                preview: t.inference.scanPreview,
-                                starting: t.inference.scanStarting,
-                                prompt: t.inference.scanPrompt,
-                                reading: t.inference.scanReading,
-                                denied: t.inference.scanDenied,
-                                unavailable: t.inference.scanUnavailable,
-                                invalid: t.inference.scanInvalid,
-                                unreachable: t.inference.scanUnreachable,
-                                retry: t.inference.scanRetry,
-                              }}
-                            />
-                          </Suspense>
+                            <bdi>{person.name[lang]}</bdi>
+                            <span dir="ltr" className="font-mono text-xs tabular-nums text-muted-foreground">
+                              {person.phone}
+                            </span>
+                          </SelectItem>
                         ))}
-                    </TabsContent>
-                  </Tabs>
-
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Greyed until something is typed: the placeholder is the number that will ring. */}
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label htmlFor="one-time-phone" className="desk-short:sr-only">
+                      {t.inference.oneTimeNumber}
+                    </Label>
+                    <Input
+                      id="one-time-phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="off"
+                      dir="ltr"
+                      value={oneTimePhone}
+                      onChange={(e) => setOneTimePhone(e.target.value)}
+                      placeholder={employee.phone}
+                      aria-invalid={oneTimeInvalid || undefined}
+                      aria-describedby="one-time-phone-help"
+                      className={cn(
+                        "h-11 text-center font-mono tabular-nums desk:h-8",
+                        !oneTimeTyped && "border-transparent bg-muted text-muted-foreground",
+                      )}
+                    />
+                    <p
+                      id="one-time-phone-help"
+                      className={oneTimeInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground desk:sr-only"}
+                    >
+                      {oneTimeInvalid ? t.inference.employeeNumberInvalid : t.inference.oneTimeHelp}
+                    </p>
+                  </div>
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label id="location-label" className="desk-short:sr-only">{t.inference.location}</Label>
+                    <Select value={location} onValueChange={(v) => v && setLocation(v as CheckpointLocation)}>
+                      <SelectTrigger
+                        aria-labelledby="location-label"
+                        className="w-full data-[size=default]:h-11 desk:data-[size=default]:h-8"
+                      >
+                        {/* a long event name truncates inside the field; the full name is in the list */}
+                        <SelectValue className="min-w-0 items-center justify-center gap-1.5 text-center">
+                          {(value: string) => (
+                            <>
+                              <MapPin aria-hidden="true" className="size-3.5 shrink-0 text-primary" />
+                              <span className="truncate">{t.location(value)}</span>
+                            </>
+                          )}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CHECKPOINT_LOCATIONS.map((value) => (
+                          <SelectItem key={value} value={value} className="min-h-10 desk:min-h-0">
+                            {t.location(value)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label htmlFor="frame" className="desk-short:sr-only">{t.inference.frame}</Label>
+                    {/* The native picker's "Choose File / No file chosen" is browser chrome that follows the
+                        OS language, not the page. The real input stays for keyboard and screen readers, and
+                        announces the chosen file through frame-status; the pill is its visible face. */}
+                    <input
+                      id="frame"
+                      type="file"
+                      accept="image/*"
+                      aria-describedby="frame-status"
+                      className="peer sr-only"
+                      onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+                    />
+                    <label
+                      htmlFor="frame"
+                      aria-hidden="true"
+                      className="font-ornate flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-lg bg-secondary px-3 text-sm font-medium text-secondary-foreground ring-1 ring-primary/15 transition-colors hover:bg-accent peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 desk:h-8"
+                    >
+                      <span className="truncate">{t.inference.chooseFile}</span>
+                    </label>
+                    <span id="frame-status" className="sr-only">
+                      {file ? file.name : t.inference.noFile}
+                    </span>
+                  </div>
+                  <Button onClick={runDetection} disabled={!file || busy !== null || !detailsReady} className="h-11 w-full desk:h-8">
+                    {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
+                  </Button>
                   {/* the bundled frame: its thumbnail beside the button, at every size */}
                   <div className="flex flex-row-reverse items-center gap-2.5 rounded-xl bg-white/55 p-2.5 ring-1 ring-primary/12 desk-short:p-2">
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -675,11 +632,7 @@ export default function App() {
                       >
                         {busy === "detect" ? t.inference.runningTest : t.inference.runTest}
                       </Button>
-                      {inputMode === "qr" && !pass ? (
-                        <p className="text-xs text-muted-foreground">{t.inference.scanFirst}</p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground desk:hidden">{t.inference.testCaption}</p>
-                      )}
+                      <p className="text-xs text-muted-foreground desk:hidden">{t.inference.testCaption}</p>
                     </div>
                     <button
                       type="button"
@@ -794,60 +747,161 @@ export default function App() {
 
                   {incident?.status === "verified" && (
                     <form
-                      className="flex flex-col gap-3 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12"
+                      className="flex flex-col gap-3 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12 desk-short:gap-2 desk-tight:p-2"
                       onSubmit={(e) => {
                         e.preventDefault()
+                        if (suspectMode === "qr") {
+                          if (!suspectPass) return
+                          const scanned = suspectPass
+                          void act("info", () =>
+                            submitInfo(incident.id, scanned.name, scanned.idNumber, undefined, scanned.location),
+                          )
+                          return
+                        }
                         void act("info", () =>
                           submitInfo(incident.id, suspectName.trim(), suspectId.trim(), suspectNotes.trim() || undefined),
                         )
                       }}
                     >
-                      <div>
+                      <div className="desk-tight:sr-only">
                         <h3 className="text-sm font-semibold">{t.inference.suspectDetails}</h3>
-                        <p className="mt-0.5 text-xs text-muted-foreground">{t.inference.suspectHelp}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground desk-short:sr-only">{t.inference.suspectHelp}</p>
                       </div>
-                      <div className="grid gap-3 sm:grid-cols-2 desk:grid-cols-1">
-                        <div className="grid gap-1.5">
-                          <Label htmlFor="suspect-name">{t.inference.fullName}</Label>
-                          <Input
-                            id="suspect-name"
-                            value={suspectName}
-                            onChange={(e) => setSuspectName(e.target.value)}
-                            placeholder={t.inference.fullNamePlaceholder}
-                            autoComplete="off"
-                            className="text-center"
-                          />
-                        </div>
-                        <div className="grid gap-1.5">
-                          <Label htmlFor="suspect-id">{t.inference.idNumber}</Label>
-                          <Input
-                            id="suspect-id"
-                            value={suspectId}
-                            onChange={(e) => setSuspectId(e.target.value)}
-                            placeholder={t.inference.idNumberPlaceholder}
-                            inputMode="numeric"
-                            autoComplete="off"
-                            dir="ltr"
-                            className="text-center font-mono"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid gap-1.5">
-                        <Label htmlFor="suspect-notes">{t.inference.notes}</Label>
-                        <Input
-                          id="suspect-notes"
-                          value={suspectNotes}
-                          onChange={(e) => setSuspectNotes(e.target.value)}
-                          placeholder={t.inference.notesPlaceholder}
-                          autoComplete="off"
-                          dir="auto"
-                          className="text-center"
-                        />
-                      </div>
+                      <Tabs
+                        value={suspectMode}
+                        onValueChange={(value) => setSuspectMode(value as "manual" | "qr")}
+                        className="gap-2 desk:gap-1.5"
+                      >
+                        <TabsList
+                          aria-label={t.inference.modeLabel}
+                          className="h-13! w-full desk:h-8! desk-tight:[&_svg]:hidden"
+                        >
+                          <TabsTrigger value="qr">
+                            <QrCode aria-hidden="true" />
+                            {t.inference.modeQr}
+                          </TabsTrigger>
+                          <TabsTrigger value="manual">
+                            <Keyboard aria-hidden="true" />
+                            {t.inference.modeManual}
+                          </TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="qr" className="rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
+                          {/* the camera runs only while this tab is open and no pass has been read */}
+                          {suspectMode === "qr" &&
+                            (suspectPass ? (
+                              <div className="flex flex-col gap-2 rounded-xl bg-white/70 p-3 ring-1 ring-primary/12 desk-short:p-2.5 desk-tight:gap-1 desk-tight:p-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <h4 className="flex min-w-0 items-center gap-1.5 text-xs font-semibold">
+                                    <BadgeCheck aria-hidden="true" className="size-4 shrink-0 text-green-600" />
+                                    <span className="truncate">{suspectPass.passType ?? t.inference.passTitle}</span>
+                                  </h4>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setSuspectPass(null)}
+                                    className="h-11 gap-1.5 text-xs desk:h-7"
+                                  >
+                                    <ScanLine aria-hidden="true" className="size-3.5" />
+                                    <span className="desk-tight:sr-only">{t.inference.rescan}</span>
+                                  </Button>
+                                </div>
+                                {/* the number keeps its full width; a long name truncates, with the whole name in its tooltip */}
+                                <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 desk-short:gap-y-1.5">
+                                  <RecordItem label={t.inference.fullName} title={suspectPass.name}>
+                                    <bdi>{suspectPass.name}</bdi>
+                                  </RecordItem>
+                                  <RecordItem label={t.inference.idNumber}>
+                                    <span dir="ltr" className="font-mono tabular-nums">
+                                      {suspectPass.idNumber}
+                                    </span>
+                                  </RecordItem>
+                                  <RecordItem
+                                    label={t.inference.event}
+                                    title={t.location(suspectPass.location)}
+                                    className="col-span-2 desk-tight:hidden"
+                                  >
+                                    <span className="inline-flex items-center gap-1 align-middle">
+                                      <MapPin aria-hidden="true" className="size-3.5 text-primary" />
+                                      <bdi>{t.location(suspectPass.location)}</bdi>
+                                    </span>
+                                  </RecordItem>
+                                </dl>
+                              </div>
+                            ) : (
+                              <Suspense
+                                fallback={
+                                  <Skeleton className="aspect-video w-full rounded-xl desk:aspect-auto desk:h-40 desk-short:h-32 desk-tight:h-24" />
+                                }
+                              >
+                                <PassScanner
+                                  onPass={applySuspectPass}
+                                  labels={{
+                                    preview: t.inference.scanPreview,
+                                    starting: t.inference.scanStarting,
+                                    prompt: t.inference.scanPrompt,
+                                    reading: t.inference.scanReading,
+                                    denied: t.inference.scanDenied,
+                                    unavailable: t.inference.scanUnavailable,
+                                    invalid: t.inference.scanInvalid,
+                                    unreachable: t.inference.scanUnreachable,
+                                    retry: t.inference.scanRetry,
+                                  }}
+                                />
+                              </Suspense>
+                            ))}
+                        </TabsContent>
+                        <TabsContent
+                          value="manual"
+                          className="flex flex-col gap-3 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50"
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2 desk:grid-cols-1">
+                            <div className="grid gap-1.5">
+                              <Label htmlFor="suspect-name">{t.inference.fullName}</Label>
+                              <Input
+                                id="suspect-name"
+                                value={suspectName}
+                                onChange={(e) => setSuspectName(e.target.value)}
+                                placeholder={t.inference.fullNamePlaceholder}
+                                autoComplete="off"
+                                className="text-center"
+                              />
+                            </div>
+                            <div className="grid gap-1.5">
+                              <Label htmlFor="suspect-id">{t.inference.idNumber}</Label>
+                              <Input
+                                id="suspect-id"
+                                value={suspectId}
+                                onChange={(e) => setSuspectId(e.target.value)}
+                                placeholder={t.inference.idNumberPlaceholder}
+                                inputMode="numeric"
+                                autoComplete="off"
+                                dir="ltr"
+                                className="text-center font-mono"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid gap-1.5">
+                            <Label htmlFor="suspect-notes">{t.inference.notes}</Label>
+                            <Input
+                              id="suspect-notes"
+                              value={suspectNotes}
+                              onChange={(e) => setSuspectNotes(e.target.value)}
+                              placeholder={t.inference.notesPlaceholder}
+                              autoComplete="off"
+                              dir="auto"
+                              className="text-center"
+                            />
+                          </div>
+                        </TabsContent>
+                      </Tabs>
                       <Button
                         type="submit"
-                        className="h-11 w-full sm:h-9"
-                        disabled={busy !== null || !suspectName.trim() || !suspectId.trim()}
+                        className="h-11 w-full sm:h-9 desk:h-8"
+                        disabled={
+                          busy !== null ||
+                          (suspectMode === "qr" ? suspectPass === null : !suspectName.trim() || !suspectId.trim())
+                        }
                       >
                         {busy === "info" ? t.inference.generating : t.inference.submit}
                       </Button>

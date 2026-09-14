@@ -1,13 +1,16 @@
-"""Builds the demo duty passes and the page that hands them out, from agent/checkpoints.py.
+"""Builds the demo passes and the page that hands them out, from agent/checkpoints.py.
 
-Run from the repo root after changing a checkpoint, its scenario, or the on-duty employee below:
+Each pass is the one the scenario's bag carrier shows at the checkpoint: a boarding pass or an
+event badge with their name, ID number and the event it was issued for. The dashboard scans it at
+the suspect details step, after the employee confirms the threat. Run from the repo root after
+changing a checkpoint, its scenario or its suspect:
 
     uv run --with "qrcode[pil]" python frontend/design/render_passes.py
 
 For every checkpoint it writes frontend/public/passes/<slug>.json (what the dashboard's scanner
 reads) and <slug>-qr.png (a QR code of that JSON's URL), then frontend/public/passes/index.html,
 the page served at https://raqeeb.khalid-ai.dev/passes where a scenario is picked and its code
-shown, ready to hold up to the dashboard's camera.
+shown, ready to hold up to the dashboard's camera. The QR codes only change if a slug does.
 """
 
 from __future__ import annotations
@@ -27,10 +30,6 @@ from agent.checkpoints import CHECKPOINTS  # noqa: E402
 PASSES = ROOT / "frontend" / "public" / "passes"
 SITE = "https://raqeeb.khalid-ai.dev"
 
-# The on-duty employee every demo pass carries. The dispatch call rings this number.
-EMPLOYEE_NAME = "خالد آل دوسري"
-EMPLOYEE_NUMBER = "0553225155"
-
 LOGO = (
     '<svg viewBox="0 0 32 32" aria-hidden="true">'
     '<path d="M16 2.75 26.5 6.6v8.15c0 6.55-4.35 11.9-10.5 14.5-6.15-2.6-10.5-7.95-10.5-14.5V6.6z" fill="#f5f8ff"/>'
@@ -40,8 +39,15 @@ LOGO = (
 )
 
 
-def write_pass(slug: str, location_name: str) -> None:
-    payload = {"الموظف المناوب": EMPLOYEE_NAME, "رقم الموظف": EMPLOYEE_NUMBER, "الموقع": location_name}
+def write_pass(checkpoint) -> None:
+    slug, suspect = checkpoint.pass_slug, checkpoint.suspect
+    # Arabic keys, as printed on the pass; frontend/src/lib/pass.ts reads these
+    payload = {
+        "الاسم": suspect.name,
+        "رقم الهوية": suspect.id_number,
+        "نوع البطاقة": suspect.pass_type,
+        "الفعالية": checkpoint.name_ar,
+    }
     (PASSES / f"{slug}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=16, border=4)
     qr.add_data(f"{SITE}/passes/{slug}.json")
@@ -53,7 +59,7 @@ def page() -> str:
     e = html.escape
     options, panels = [], []
     for index, checkpoint in enumerate(CHECKPOINTS):
-        slug, name = checkpoint.pass_slug, checkpoint.name_ar
+        slug, name, suspect = checkpoint.pass_slug, checkpoint.name_ar, checkpoint.suspect
         headline = dict(checkpoint.scenario).get("الفعالية", "")
         selected = index == 0
         options.append(
@@ -64,12 +70,13 @@ def page() -> str:
         panels.append(
             f'<section class="panel" data-slug="{slug}" aria-label="{e(name)}"{"" if selected else " hidden"}>'
             # absolute: the page is served at /passes too, where ./ would resolve to the site root
-            f'<div class="code"><img src="/passes/{slug}-qr.png" width="656" height="656" alt="رمز QR لبطاقة مناوبة {e(name)}" /></div>'
+            f'<div class="code"><img src="/passes/{slug}-qr.png" width="656" height="656" alt="رمز QR {e(suspect.pass_type)} في {e(name)}" /></div>'
             f'<div class="pass">'
             f'<h2>{e(name)}</h2>'
             f'<dl class="facts">'
-            f"<div><dt>الموظف المناوب</dt><dd>{e(EMPLOYEE_NAME)}</dd></div>"
-            f'<div><dt>رقم الموظف</dt><dd dir="ltr">{e(EMPLOYEE_NUMBER)}</dd></div>'
+            f"<div><dt>الاسم</dt><dd>{e(suspect.name)}</dd></div>"
+            f'<div><dt>رقم الهوية</dt><dd dir="ltr">{e(suspect.id_number)}</dd></div>'
+            f'<div class="wide"><dt>نوع البطاقة</dt><dd>{e(suspect.pass_type)}</dd></div>'
             f"</dl>"
             f'<h3>تفاصيل السيناريو</h3><dl class="details">{details}</dl>'
             f'<a class="link" href="/passes/{slug}.json">محتوى البطاقة</a>'
@@ -82,8 +89,8 @@ def page() -> str:
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>رقيب · بطاقات المناوبة التجريبية</title>
-<meta name="description" content="اختر سيناريو واعرض رمز بطاقة المناوبة، ثم امسحه بكاميرا لوحة رقيب لبدء العرض." />
+<title>رقيب · بطاقات المشتبه بهم التجريبية</title>
+<meta name="description" content="اختر سيناريو واعرض بطاقة حامل الحقيبة، ثم امسحها بكاميرا لوحة رقيب في خطوة بيانات المشتبه به." />
 <meta name="theme-color" content="#0d2a61" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <style>
@@ -128,6 +135,7 @@ dt {{ color: #a9c1ff; font-size: 13px; }}
 dd {{ margin: 0; line-height: 1.6; }}
 .facts {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
 .facts dd {{ font-weight: 700; }}
+.facts .wide {{ grid-column: 1 / -1; }}
 .details {{ display: grid; gap: 8px; }}
 .link {{ display: inline-block; margin-top: 16px; color: #a9c1ff; font-size: 14px; }}
 .open {{ display: inline-flex; margin-top: 18px; min-height: 48px; align-items: center; padding: 0 22px; border-radius: 999px; background: #f5f8ff; color: #0d2a61; font-weight: 700; text-decoration: none; }}
@@ -145,8 +153,8 @@ dd {{ margin: 0; line-height: 1.6; }}
 <div class="wrap">
   <header>{LOGO}<span class="brand">رقيب</span></header>
   <main>
-  <h1>بطاقات المناوبة التجريبية</h1>
-  <p class="lead">اختر سيناريو، ثم افتح لوحة رقيب على جهاز آخر وهي في وضع «مسح البطاقة»، ووجّه الرمز نحو الكاميرا. تُملأ بيانات المناوبة والموقع تلقائيًا، ويُرفق السيناريو بالبلاغ وبمكالمة الإبلاغ.</p>
+  <h1>بطاقات المشتبه بهم التجريبية</h1>
+  <p class="lead">اختر سيناريو، وشغّل الكشف في لوحة رقيب على جهاز آخر. بعد أن يؤكد الموظف التهديد، وجّه رمز البطاقة نحو الكاميرا في خطوة «بيانات المشتبه به»، فتُملأ بيانات حامل الحقيبة تلقائيًا، وتُحدَّد الفعالية ويُرفق سيناريوها بالبلاغ وبمكالمة الإبلاغ.</p>
   <div class="layout">
     <div class="options" role="group" aria-label="السيناريوهات">{"".join(options)}</div>
     <div>{"".join(panels)}</div>
@@ -176,6 +184,6 @@ dd {{ margin: 0; line-height: 1.6; }}
 
 PASSES.mkdir(parents=True, exist_ok=True)
 for checkpoint in CHECKPOINTS:
-    write_pass(checkpoint.pass_slug, checkpoint.name_ar)
+    write_pass(checkpoint)
 (PASSES / "index.html").write_text(page(), encoding="utf-8")
 print(f"wrote {len(CHECKPOINTS)} passes and passes/index.html to {PASSES}")

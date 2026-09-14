@@ -50,6 +50,9 @@ def test_every_checkpoint_speaks_arabic_and_has_a_scenario():
         assert len(checkpoint.scenario) >= 8, checkpoint.code
         for label, detail in checkpoint.scenario:
             assert not _LATIN.search(label + detail), (checkpoint.code, label)
+        # the scanned pass's name and number reach the call as the suspect's details
+        assert not _LATIN.search(checkpoint.suspect.name + checkpoint.suspect.pass_type), checkpoint.code
+        assert checkpoint.suspect.id_number.isdigit() and len(checkpoint.suspect.id_number) == 10, checkpoint.code
 
 
 def test_tool_definition_is_arabic_apart_from_identifiers():

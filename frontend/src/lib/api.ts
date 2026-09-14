@@ -76,12 +76,13 @@ export async function verify(id: string, confirmed: boolean, notes?: string) {
   )
 }
 
-export async function submitInfo(id: string, suspectName: string, suspectId: string, notes?: string) {
+// location: the event a scanned pass was issued for, which replaces the incident's location
+export async function submitInfo(id: string, suspectName: string, suspectId: string, notes?: string, location?: string) {
   return json<any>(
     await fetch(`${API_BASE}/api/incidents/${id}/manual-info`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ suspect_name: suspectName, suspect_id_number: suspectId, notes }),
+      body: JSON.stringify({ suspect_name: suspectName, suspect_id_number: suspectId, notes, location }),
     }),
   )
 }

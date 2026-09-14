@@ -7,11 +7,13 @@ authority dispatch confirmation."""
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 import agent.graph.workflow as workflow_module
 from agent.db import init_db
-from agent.graph.runner import resume_incident, start_incident
+from agent.graph.runner import get_incident_snapshot, resume_incident, start_incident
+from agent.main import app
 from agent.schemas import DetectionResult
 
 
@@ -98,6 +100,37 @@ async def test_employee_mobile_takes_the_call_and_location_is_stamped():
     # the call goes to the employee, but the agency it represents is still the mapped one
     assert state["authority"]["phone_number"] == "+966551234567"
     assert state["authority"]["agency"] == "police"
+
+
+@pytest.mark.asyncio
+async def test_a_scanned_pass_sets_the_event_the_report_and_call_describe():
+    incident_id = "TEST-PASS-EVENT-1"
+    await start_incident(
+        incident_id,
+        "irrelevant.jpg",
+        employee_name="Sara",
+        employee_id="+966551234567",
+        location="Private Aviation Terminal",
+        call_phone="+966551234567",
+    )
+    await resume_incident(incident_id, {"confirmed": True, "notes": None})
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        refused = await client.post(
+            f"/api/incidents/{incident_id}/manual-info",
+            json={"suspect_name": "ماجد الحربي", "suspect_id_number": "1076238415", "location": "Nowhere"},
+        )
+        assert refused.status_code == 422
+        response = await client.post(
+            f"/api/incidents/{incident_id}/manual-info",
+            json={"suspect_name": "ماجد الحربي", "suspect_id_number": "1076238415", "location": "Future Investment Initiative"},
+        )
+    assert response.status_code == 200, response.text
+
+    state = (await get_incident_snapshot(incident_id)).values
+    assert state["report"]["location"] == "Future Investment Initiative"
+    assert state["report"]["scenario"]["نقطة التفتيش"] == "نقطة تفتيش الوفود عند المدخل الرئيسي"
+    assert state["report"]["suspect"]["name"] == "ماجد الحربي"
 
 
 @pytest.mark.asyncio

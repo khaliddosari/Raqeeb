@@ -1,22 +1,28 @@
-// A duty pass: the on-duty employee, their mobile and the checkpoint, carried by a QR code so a
-// demo can start without typing. The code holds a URL to the pass JSON, or the JSON itself.
+// A suspect's pass: the boarding pass or event badge the bag carrier shows, carried by a QR code so
+// the suspect details need no typing. It also names the event it was issued for, which becomes the
+// incident's location, so the report and the call describe that event's scenario. The code holds a
+// URL to the pass JSON, or the JSON itself.
 
 import { locationCode } from "@/lib/i18n"
-import { normalizeSaudiMobile, type CheckpointLocation } from "@/lib/intake"
+import type { CheckpointLocation } from "@/lib/intake"
 
-export type DutyPass = {
-  employeeName: string
-  /** as written on the pass; normalized when the detection is sent */
-  employeePhone: string
+export type SuspectPass = {
+  name: string
+  idNumber: string
+  /** what the pass is, such as a delegate badge; shown on the dashboard, not sent */
+  passType: string | null
   location: CheckpointLocation
 }
 
-export type PassResult = { ok: true; pass: DutyPass } | { ok: false; reason: "invalid" | "unreachable" }
+export type PassResult = { ok: true; pass: SuspectPass } | { ok: false; reason: "invalid" | "unreachable" }
 
 // A pass may use English keys or the Arabic labels printed on the pass itself.
-const NAME_KEYS = ["employee_name", "الموظف المناوب", "الموظف"]
-const NUMBER_KEYS = ["employee_number", "رقم الموظف"]
-const LOCATION_KEYS = ["location", "الموقع"]
+const NAME_KEYS = ["name", "suspect_name", "الاسم"]
+const ID_KEYS = ["id_number", "suspect_id_number", "رقم الهوية"]
+const TYPE_KEYS = ["pass_type", "نوع البطاقة"]
+const LOCATION_KEYS = ["location", "event", "الفعالية", "الموقع"]
+// national ID, residence permit or passport number
+const ID_NUMBER = /^[0-9A-Za-z]{5,20}$/
 
 // Passes published on Raqeeb's own site are read from whichever deployment is scanning them, so
 // the same printed code works on localhost and on preview deployments, not only in production.
@@ -31,23 +37,24 @@ function field(record: Record<string, unknown>, keys: string[]): string | null {
   return null
 }
 
-export function parseDutyPass(value: unknown): DutyPass | null {
+export function parseSuspectPass(value: unknown): SuspectPass | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null
   const record = value as Record<string, unknown>
-  const employeeName = field(record, NAME_KEYS)
-  const employeePhone = field(record, NUMBER_KEYS)
+  const name = field(record, NAME_KEYS)
+  const idNumber = field(record, ID_KEYS)
+  const passType = field(record, TYPE_KEYS)
   const location = locationCode(field(record, LOCATION_KEYS) ?? "")
-  if (!employeeName || employeeName.length > 80) return null
-  if (!employeePhone || !normalizeSaudiMobile(employeePhone)) return null
+  if (!name || name.length > 80) return null
+  if (!idNumber || !ID_NUMBER.test(idNumber)) return null
   if (!location) return null
-  return { employeeName, employeePhone, location: location as CheckpointLocation }
+  return { name, idNumber, passType: passType && passType.length <= 40 ? passType : null, location: location as CheckpointLocation }
 }
 
-export async function readDutyPass(scanned: string): Promise<PassResult> {
+export async function readSuspectPass(scanned: string): Promise<PassResult> {
   const text = scanned.trim()
   if (text.startsWith("{")) {
     try {
-      const pass = parseDutyPass(JSON.parse(text))
+      const pass = parseSuspectPass(JSON.parse(text))
       return pass ? { ok: true, pass } : { ok: false, reason: "invalid" }
     } catch {
       return { ok: false, reason: "invalid" }
@@ -69,7 +76,7 @@ export async function readDutyPass(scanned: string): Promise<PassResult> {
       signal: AbortSignal.timeout(8000),
     })
     if (!response.ok) return { ok: false, reason: "unreachable" }
-    const pass = parseDutyPass(await response.json())
+    const pass = parseSuspectPass(await response.json())
     return pass ? { ok: true, pass } : { ok: false, reason: "invalid" }
   } catch (error) {
     return { ok: false, reason: error instanceof SyntaxError ? "invalid" : "unreachable" }
