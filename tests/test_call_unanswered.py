@@ -4,8 +4,9 @@ Seen live: a call that went to the callee's voicemail was briefed, the agent rec
 confirmation nobody gave, and the incident closed as dispatched. These cover the guards: a call
 that never connects is recorded as unanswered instead of waiting forever, and the call driver
 refuses a decision recorded before anyone on the line has spoken. An unanswered incident can be
-called again. Answering machine detection was dropped because it hung up on people, so an
-answered call is always connected to the agent."""
+called again, including a call Twilio refuses to place at all, which is recorded the same way
+rather than taking the resuming request down with it. Answering machine detection was dropped
+because it hung up on people, so an answered call is always connected to the agent."""
 
 from __future__ import annotations
 
@@ -84,6 +85,47 @@ async def test_an_unanswered_call_can_be_placed_again():
 
     # only an unanswered incident can be called again
     assert (await _post(f"/api/incidents/{incident_id}/call-again")).status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_a_call_the_provider_refuses_to_place_is_held_and_can_be_placed_again(monkeypatch):
+    """Twilio rejecting the destination outright -- an unverified number, a country the account
+    may not dial -- must not take the resuming request down with it. The report is already
+    generated and sent by then, so the incident holds as a call that reached no one."""
+    incident_id = "TEST-REFUSED-1"
+    working = workflow_module.get_telephony_provider
+
+    class _RefusingTelephony:
+        async def place_call(self, to_number: str, incident_id: str) -> str:
+            raise RuntimeError("HTTP 400 error: Unable to create record: Account not allowed to call " + to_number)
+
+    monkeypatch.setattr(workflow_module, "get_telephony_provider", lambda: _RefusingTelephony())
+
+    await start_incident(incident_id, "x.jpg", employee_name="سارة", employee_id="+966551234567")
+    await resume_incident(incident_id, {"confirmed": True, "notes": None})
+    paused = await resume_incident(
+        incident_id,
+        {"flagged_false_positive": False, "fields": {"suspect_name": "فيصل", "suspect_id_number": "1093847562"}},
+    )
+
+    assert paused["interrupt"]["stage"] == "call_unanswered"
+    snapshot = await get_incident_snapshot(incident_id)
+    assert snapshot.values["status"] == "call_unanswered"
+    assert snapshot.next == ("await_call_retry",)
+    assert snapshot.values["call_sid"] is None
+    assert snapshot.values["authority_response"]["outcome"] == "failed"
+    assert snapshot.values["authority_response"]["dispatch_confirmed"] is False
+    assert "Account not allowed to call" in snapshot.values["authority_response"]["error"]
+    # the report survived the refused call rather than being lost with the request
+    assert snapshot.values["report"] is not None
+
+    monkeypatch.setattr(workflow_module, "get_telephony_provider", working)
+    retried = await _post(f"/api/incidents/{incident_id}/call-again")
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["interrupt"]["stage"] == "authority_conversation"
+    snapshot = await get_incident_snapshot(incident_id)
+    assert snapshot.values["status"] == "call_in_progress"
+    assert snapshot.values["call_sid"] is not None
 
 
 @pytest.mark.asyncio

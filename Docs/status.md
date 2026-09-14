@@ -59,13 +59,13 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is 31 tests, all passing: five drive the LangGraph workflow with mock providers
+The test suite is 32 tests, all passing: five drive the LangGraph workflow with mock providers
 (one through the manual-info route, where a scanned pass's event replaces the location),
 one drives the OpenAI call webhook over the on-disk checkpointer, five hold the call to Arabic
 (every checkpoint's spoken name and scenario included) and check the live transcript's ordering,
-five cover calls that reach no one (`tests/test_call_unanswered.py`: an answered call is always
-connected, a missed call, stale or forged Twilio webhooks, the retry, and a decision recorded
-before anyone spoke), and the
+six cover calls that reach no one (`tests/test_call_unanswered.py`: an answered call is always
+connected, a missed call, a call Twilio refuses to place, stale or forged Twilio webhooks, the
+retry, and a decision recorded before anyone spoke), and the
 rest cover the intake rules in `agent/intake.py` (which phone numbers and locations are accepted)
 and the class-to-agency routing. The detection and verification routes, the monitor WebSocket and
 all of the frontend are untested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
@@ -120,10 +120,18 @@ both reuse the same webhook routes.
 ### A call that reaches no one
 
 On 2026-09-14 a dispatch call went to the callee's voicemail. The agent recorded a confirmation
-nobody gave, and the incident closed as dispatched. Two guards now stop that:
+nobody gave, and the incident closed as dispatched. Three guards now stop that:
 
 - **Calls that never connect.** The final status callback for a busy line, no answer or failure
   resumes the incident as unanswered. Before this such an incident waited forever.
+- **Calls the provider refuses to place.** On 2026-09-14 Twilio rejected the dispatch call outright
+  with `Account not allowed to call +966...`, and the exception took the whole resuming request
+  down: `resume_incident` only writes state back once `ainvoke` returns, so the incident was left
+  stranded with its generated and delivered report unrecorded, and the dashboard showed nothing but
+  a network error. `twilio_outbound_call_node` now catches it, records outcome `failed` with the
+  provider's own message on `authority_response.error`, and routes straight to the retry hold. Two
+  things cause that rejection and both are fixed in the Twilio console, not in code: a trial account
+  may only dial verified caller IDs, and Voice Geo Permissions must have Saudi Arabia enabled.
 - **No decision without a reply.** `observe_and_drive` refuses `record_dispatch_confirmation` until
   the other side has taken a turn, and tells the model why so the call carries on. The instructions
   also say a recording is never a decision.
@@ -143,6 +151,20 @@ places a fresh call. Both Twilio webhooks now check `X-Twilio-Signature` against
 incident API. They also act only on the call the incident is waiting for, so a late event from an
 earlier attempt cannot end a retry. Outcomes are recorded on `authority_response.outcome`: answered
 calls carry `answered`.
+
+### Errors have to survive the trip to the dashboard
+
+Starlette's `ServerErrorMiddleware` sits outside every middleware added with `add_middleware`, so
+the bare 500 it produces never passes back through CORS and carries no `Access-Control-Allow-Origin`
+header. The browser then discards the response without reading it and the dashboard, on its own
+origin, reports an opaque network failure: Safari says `TypeError: Load failed`, which is what hid
+the Twilio rejection above for as long as it did. `ReadableServerErrors` in `agent/main.py` catches
+unhandled exceptions from inside CORS so the reason reaches the dashboard, and still prints the
+traceback so the Modal logs are unchanged. Registering a handler for `Exception` on the app is not
+an alternative: FastAPI wires that into `ServerErrorMiddleware`, which is still outside CORS.
+
+CORS itself no longer promises credentials alongside a wildcard origin, since a browser rejects
+that pairing. Set `ALLOWED_ORIGINS` on the Modal secret to the dashboard's origin to allow both.
 
 ### The call is Arabic end to end
 

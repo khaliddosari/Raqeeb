@@ -138,8 +138,35 @@ async def send_report_node(state: IncidentState) -> dict[str, Any]:
 async def twilio_outbound_call_node(state: IncidentState) -> dict[str, Any]:
     telephony = get_telephony_provider()
     authority = AuthorityConfig(**state["authority"])
-    call_sid = await telephony.place_call(authority.phone_number, state["incident_id"])
+    try:
+        call_sid = await telephony.place_call(authority.phone_number, state["incident_id"])
+    except Exception as exc:
+        # The provider refused to place the call at all: an unverified or barred destination,
+        # a country the account may not dial, expired credentials, an outage. Letting that
+        # escape would take down the request that resumed the graph and leave the incident
+        # stranded, because runner.resume_incident only writes state back once ainvoke
+        # returns -- and by this point the report has already been generated and delivered.
+        # A call that was never placed reached no one, which is a state the graph already
+        # holds and can retry, so it goes there carrying the provider's own reason.
+        print(f"[telephony {state['incident_id']}] placing the dispatch call failed: {exc!r}")
+        return {
+            "call_sid": None,
+            "authority_response": {
+                "dispatch_confirmed": False,
+                "outcome": "failed",
+                "authority_statement": "",
+                "raw_transcript": [],
+                "error": str(exc),
+            },
+            "status": "call_not_placed",
+        }
     return {"call_sid": call_sid, "status": "call_in_progress"}
+
+
+def route_after_call_placed(state: IncidentState) -> str:
+    """A call that was never placed has nothing to listen to: it skips the conversation and
+    is recorded straight away as having reached no one."""
+    return "update_incident" if state["status"] == "call_not_placed" else "gemini_authority_conversation"
 
 
 async def gemini_authority_conversation_node(state: IncidentState) -> dict[str, Any]:
@@ -227,7 +254,11 @@ def build_graph():
     graph.add_edge("generate_incident_report", "determine_authority")
     graph.add_edge("determine_authority", "send_report")
     graph.add_edge("send_report", "twilio_outbound_call")
-    graph.add_edge("twilio_outbound_call", "gemini_authority_conversation")
+    graph.add_conditional_edges(
+        "twilio_outbound_call",
+        route_after_call_placed,
+        {"update_incident": "update_incident", "gemini_authority_conversation": "gemini_authority_conversation"},
+    )
     graph.add_edge("gemini_authority_conversation", "update_incident")
     graph.add_conditional_edges("update_incident", route_after_update, {"await_call_retry": "await_call_retry", END: END})
     graph.add_edge("await_call_retry", "twilio_outbound_call")

@@ -96,11 +96,15 @@ def fastapi_app():
     from agent.main import app as fastapi
 
     # The dashboard is on a different origin once it is on Vercel.
-    origins = [o for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o]
+    origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
     fastapi.add_middleware(
         CORSMiddleware,
         allow_origins=origins or ["*"],
-        allow_credentials=True,
+        # A browser rejects a wildcard Access-Control-Allow-Origin on any credentialed
+        # request, so the two can only be promised together once ALLOWED_ORIGINS names the
+        # dashboard's origin explicitly. Nothing sends credentials today; this keeps the
+        # fallback honest rather than quietly broken the first time something does.
+        allow_credentials=bool(origins),
         allow_methods=["*"],
         allow_headers=["*"],
     )
