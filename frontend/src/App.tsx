@@ -1,6 +1,6 @@
 import { DirectionProvider } from "@base-ui/react/direction-provider"
-import { MapPin, Pause as PauseIcon, Play as PlayIcon } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { BadgeCheck, Keyboard, MapPin, Pause as PauseIcon, Play as PlayIcon, QrCode, ScanLine } from "lucide-react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { AgencyMark } from "@/components/AgencyMark"
 import { CallTranscript, type TranscriptLine } from "@/components/CallTranscript"
 import {
@@ -36,6 +36,7 @@ import {
 import { isAgency } from "@/lib/agency"
 import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
 import { CHECKPOINT_LOCATIONS, normalizeSaudiMobile, type CheckpointLocation } from "@/lib/intake"
+import type { DutyPass } from "@/lib/pass"
 import { toPlainText } from "@/lib/plaintext"
 import { cn } from "@/lib/utils"
 
@@ -56,6 +57,9 @@ const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
 })
 
 const TEST_IMAGE_URL = `${import.meta.env.BASE_URL}test-image.png`
+
+// The QR decoder is only needed once someone opens scan mode, so it loads then, not with the page.
+const PassScanner = lazy(() => import("@/components/PassScanner").then((m) => ({ default: m.PassScanner })))
 
 // Prefilled demo values, Arabic in both interface languages: everything that reaches the call is Arabic.
 const PREFILL = {
@@ -143,6 +147,15 @@ export default function App() {
   // Required: the employee's identifier on the report, and the mobile the dispatch call rings.
   const [employeePhone, setEmployeePhone] = useState("")
   const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
+  // Shift details come from the fields, or from a scanned duty pass that fills them in.
+  const [inputMode, setInputMode] = useState<"manual" | "qr">("manual")
+  const [pass, setPass] = useState<DutyPass | null>(null)
+  const applyPass = useCallback((scanned: DutyPass) => {
+    setPass(scanned)
+    setEmployeeName(scanned.employeeName)
+    setEmployeePhone(scanned.employeePhone)
+    setLocation(scanned.location)
+  }, [])
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [annotated, setAnnotated] = useState<string | null>(null)
@@ -208,6 +221,8 @@ export default function App() {
 
   const phoneE164 = normalizeSaudiMobile(employeePhone)
   const phoneInvalid = employeePhone.trim() !== "" && phoneE164 === null
+  // in scan mode the test image waits for a pass, even if the manual fields were filled earlier
+  const detailsReady = inputMode === "qr" ? pass !== null : phoneE164 !== null
 
   const onFile = (f: File | null) => {
     setFile(f)
@@ -456,99 +471,171 @@ export default function App() {
             <div className="grid gap-3 md:grid-cols-2 desk:min-h-0 desk:flex-1 desk:grid-cols-[minmax(0,1fr)_minmax(0,1.45fr)_minmax(0,1fr)] desk:grid-rows-[minmax(0,1fr)]">
               {/* input */}
               <ScrollArea className="desk:h-full desk:min-h-0">
-                <div className="flex flex-col gap-3 desk:gap-2 desk:p-1 desk:pe-3 desk-short:gap-1">
-                  <div className="grid gap-1.5 desk:gap-1">
-                    <Label htmlFor="emp-name">{t.inference.employee}</Label>
-                    <Input
-                      id="emp-name"
-                      value={employeeName}
-                      onChange={(e) => setEmployeeName(e.target.value)}
-                      autoComplete="name"
-                      className="h-11 text-center desk:h-8"
-                    />
-                  </div>
-                  <div className="grid gap-1.5 desk:gap-1">
-                    <Label htmlFor="emp-phone">
-                      {t.inference.employeeNumber}
-                      <span aria-hidden="true" className="text-destructive">
-                        *
-                      </span>
-                    </Label>
-                    <Input
-                      id="emp-phone"
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="tel"
-                      dir="ltr"
-                      value={employeePhone}
-                      onChange={(e) => setEmployeePhone(e.target.value)}
-                      placeholder={t.inference.employeeNumberPlaceholder}
-                      required
-                      aria-invalid={phoneInvalid || undefined}
-                      aria-describedby="emp-phone-help"
-                      className="h-11 text-center font-mono tabular-nums desk:h-8"
-                    />
-                    <p
-                      id="emp-phone-help"
-                      className={
-                        phoneInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground desk:sr-only"
-                      }
-                    >
-                      {phoneInvalid ? t.inference.employeeNumberInvalid : t.inference.employeeNumberHelp}
-                    </p>
-                  </div>
-                  <div className="grid gap-1.5 desk:gap-1">
-                    <Label id="location-label" className="desk-short:sr-only">{t.inference.location}</Label>
-                    <Select value={location} onValueChange={(v) => v && setLocation(v as CheckpointLocation)}>
-                      <SelectTrigger
-                        aria-labelledby="location-label"
-                        className="w-full data-[size=default]:h-11 desk:data-[size=default]:h-8"
-                      >
-                        <SelectValue className="justify-center gap-1.5 text-center">
-                          {(value: string) => (
-                            <>
-                              <MapPin aria-hidden="true" className="size-3.5 text-primary" />
-                              {t.location(value)}
-                            </>
-                          )}
-                        </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CHECKPOINT_LOCATIONS.map((value) => (
-                          <SelectItem key={value} value={value} className="min-h-10 desk:min-h-0">
-                            {t.location(value)}
-                          </SelectItem>
+                <div className="flex flex-col gap-3 desk:gap-2 desk:p-1 desk:pe-3 desk-short:gap-1.5">
+                  {/* Two ways in: type the shift details, or scan a duty pass that carries them. Scanning
+                      replaces the fields and the file upload; the bundled test image serves both. */}
+                  <Tabs value={inputMode} onValueChange={(value) => setInputMode(value as "manual" | "qr")} className="gap-2 desk:gap-1.5">
+                    <TabsList aria-label={t.inference.modeLabel} className="h-13! w-full desk:h-8!">
+                      <TabsTrigger value="manual">
+                        <Keyboard aria-hidden="true" />
+                        {t.inference.modeManual}
+                      </TabsTrigger>
+                      <TabsTrigger value="qr">
+                        <QrCode aria-hidden="true" />
+                        {t.inference.modeQr}
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="manual" className="flex flex-col gap-3 rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50 desk:gap-2 desk-short:gap-1.5">
+                      <div className="grid gap-1.5 desk:gap-1">
+                        <Label htmlFor="emp-name">{t.inference.employee}</Label>
+                        <Input
+                          id="emp-name"
+                          value={employeeName}
+                          onChange={(e) => setEmployeeName(e.target.value)}
+                          autoComplete="name"
+                          className="h-11 text-center desk:h-8"
+                        />
+                      </div>
+                      <div className="grid gap-1.5 desk:gap-1">
+                        <Label htmlFor="emp-phone">
+                          {t.inference.employeeNumber}
+                          <span aria-hidden="true" className="text-destructive">
+                            *
+                          </span>
+                        </Label>
+                        <Input
+                          id="emp-phone"
+                          type="tel"
+                          inputMode="tel"
+                          autoComplete="tel"
+                          dir="ltr"
+                          value={employeePhone}
+                          onChange={(e) => setEmployeePhone(e.target.value)}
+                          placeholder={t.inference.employeeNumberPlaceholder}
+                          required
+                          aria-invalid={phoneInvalid || undefined}
+                          aria-describedby="emp-phone-help"
+                          className="h-11 text-center font-mono tabular-nums desk:h-8"
+                        />
+                        <p
+                          id="emp-phone-help"
+                          className={
+                            phoneInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground desk:sr-only"
+                          }
+                        >
+                          {phoneInvalid ? t.inference.employeeNumberInvalid : t.inference.employeeNumberHelp}
+                        </p>
+                      </div>
+                      <div className="grid gap-1.5 desk:gap-1">
+                        <Label id="location-label" className="desk-short:sr-only">{t.inference.location}</Label>
+                        <Select value={location} onValueChange={(v) => v && setLocation(v as CheckpointLocation)}>
+                          <SelectTrigger
+                            aria-labelledby="location-label"
+                            className="w-full data-[size=default]:h-11 desk:data-[size=default]:h-8"
+                          >
+                            <SelectValue className="justify-center gap-1.5 text-center">
+                              {(value: string) => (
+                                <>
+                                  <MapPin aria-hidden="true" className="size-3.5 text-primary" />
+                                  {t.location(value)}
+                                </>
+                              )}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CHECKPOINT_LOCATIONS.map((value) => (
+                              <SelectItem key={value} value={value} className="min-h-10 desk:min-h-0">
+                                {t.location(value)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-1.5 desk:gap-1">
+                        <Label htmlFor="frame" className="desk-short:sr-only">{t.inference.frame}</Label>
+                        {/* The native picker's "Choose File / No file chosen" is browser chrome that follows the
+                            OS language, not the page. The real input stays for keyboard and screen readers, and
+                            announces the chosen file through frame-status; the pill is its visible face. */}
+                        <input
+                          id="frame"
+                          type="file"
+                          accept="image/*"
+                          aria-describedby="frame-status"
+                          className="peer sr-only"
+                          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+                        />
+                        <label
+                          htmlFor="frame"
+                          aria-hidden="true"
+                          className="font-ornate flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-lg bg-secondary px-3 text-sm font-medium text-secondary-foreground ring-1 ring-primary/15 transition-colors hover:bg-accent peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 desk:h-8"
+                        >
+                          <span className="truncate">{t.inference.chooseFile}</span>
+                        </label>
+                        <span id="frame-status" className="sr-only">
+                          {file ? file.name : t.inference.noFile}
+                        </span>
+                      </div>
+                      <Button onClick={runDetection} disabled={!file || busy !== null || !phoneE164} className="h-11 w-full desk:h-8">
+                        {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
+                      </Button>
+                    </TabsContent>
+                    <TabsContent value="qr" className="rounded-lg focus-visible:ring-3 focus-visible:ring-ring/50">
+                      {inputMode === "qr" &&
+                        (pass ? (
+                          <div className="flex flex-col gap-2 rounded-xl bg-white/55 p-3 ring-1 ring-primary/12 desk-short:p-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="flex items-center gap-1.5 text-xs font-semibold">
+                                <BadgeCheck aria-hidden="true" className="size-4 text-green-600" />
+                                {t.inference.passTitle}
+                              </h3>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setPass(null)}
+                                className="h-11 gap-1.5 text-xs desk:h-7"
+                              >
+                                <ScanLine aria-hidden="true" className="size-3.5" />
+                                {t.inference.rescan}
+                              </Button>
+                            </div>
+                            <dl className="grid grid-cols-2 gap-x-3 gap-y-2 desk-short:gap-y-1.5">
+                              <RecordItem label={t.inference.dutyEmployee} title={pass.employeeName}>
+                                <bdi>{pass.employeeName}</bdi>
+                              </RecordItem>
+                              <RecordItem label={t.inference.employeeNumber}>
+                                <span dir="ltr" className="font-mono tabular-nums">
+                                  {pass.employeePhone}
+                                </span>
+                              </RecordItem>
+                              <RecordItem label={t.inference.location} title={t.location(pass.location)} className="col-span-2">
+                                <span className="inline-flex items-center gap-1 align-middle">
+                                  <MapPin aria-hidden="true" className="size-3.5 text-primary" />
+                                  <bdi>{t.location(pass.location)}</bdi>
+                                </span>
+                              </RecordItem>
+                            </dl>
+                          </div>
+                        ) : (
+                          <Suspense fallback={<Skeleton className="aspect-video w-full rounded-xl desk:aspect-auto desk:h-40 desk-short:h-32 desk-tight:h-24" />}>
+                            <PassScanner
+                              onPass={applyPass}
+                              labels={{
+                                preview: t.inference.scanPreview,
+                                starting: t.inference.scanStarting,
+                                prompt: t.inference.scanPrompt,
+                                reading: t.inference.scanReading,
+                                denied: t.inference.scanDenied,
+                                unavailable: t.inference.scanUnavailable,
+                                invalid: t.inference.scanInvalid,
+                                unreachable: t.inference.scanUnreachable,
+                                retry: t.inference.scanRetry,
+                              }}
+                            />
+                          </Suspense>
                         ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-1.5 desk:gap-1">
-                    <Label htmlFor="frame" className="desk-short:sr-only">{t.inference.frame}</Label>
-                    {/* The native picker's "Choose File / No file chosen" is browser chrome that follows the
-                        OS language, not the page. The real input stays for keyboard and screen readers, and
-                        announces the chosen file through frame-status; the pill is its visible face. */}
-                    <input
-                      id="frame"
-                      type="file"
-                      accept="image/*"
-                      aria-describedby="frame-status"
-                      className="peer sr-only"
-                      onChange={(e) => onFile(e.target.files?.[0] ?? null)}
-                    />
-                    <label
-                      htmlFor="frame"
-                      aria-hidden="true"
-                      className="font-ornate flex h-11 w-full min-w-0 cursor-pointer items-center justify-center rounded-lg bg-secondary px-3 text-sm font-medium text-secondary-foreground ring-1 ring-primary/15 transition-colors hover:bg-accent peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 desk:h-8"
-                    >
-                      <span className="truncate">{t.inference.chooseFile}</span>
-                    </label>
-                    <span id="frame-status" className="sr-only">
-                      {file ? file.name : t.inference.noFile}
-                    </span>
-                  </div>
-                  <Button onClick={runDetection} disabled={!file || busy !== null || !phoneE164} className="h-11 w-full desk:h-8">
-                    {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
-                  </Button>
+                    </TabsContent>
+                  </Tabs>
 
                   {/* the bundled frame: its thumbnail beside the button, at every size */}
                   <div className="flex flex-row-reverse items-center gap-2.5 rounded-xl bg-white/55 p-2.5 ring-1 ring-primary/12 desk-short:p-2">
@@ -556,17 +643,21 @@ export default function App() {
                       <Button
                         variant="secondary"
                         onClick={runTestImage}
-                        disabled={busy !== null || !phoneE164}
+                        disabled={busy !== null || !detailsReady}
                         className="h-11 w-full desk:h-8"
                       >
                         {busy === "detect" ? t.inference.runningTest : t.inference.runTest}
                       </Button>
-                      <p className="text-xs text-muted-foreground desk:hidden">{t.inference.testCaption}</p>
+                      {inputMode === "qr" && !pass ? (
+                        <p className="text-xs text-muted-foreground">{t.inference.scanFirst}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground desk:hidden">{t.inference.testCaption}</p>
+                      )}
                     </div>
                     <button
                       type="button"
                       onClick={runTestImage}
-                      disabled={busy !== null || !phoneE164}
+                      disabled={busy !== null || !detailsReady}
                       aria-label={t.inference.testAria}
                       className="w-24 shrink-0 overflow-hidden rounded-lg ring-1 ring-primary/12 disabled:cursor-not-allowed desk-short:w-16"
                     >

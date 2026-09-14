@@ -220,6 +220,18 @@ Private Aviation Terminal. Both are validated in `agent/intake.py`, which is the
 frontend copy in `lib/intake.ts` only lets the form explain itself early. Change the two
 together.
 
+**Duty passes: scan instead of type.** The input card has two modes. Manual entry is the fields
+and the file upload. Scan pass uses the device camera (`components/PassScanner.tsx`, jsQR, or the
+browser's BarcodeDetector where it exists) to read a QR code that holds either a URL to a pass JSON
+or the JSON itself, and fills in the on-duty employee, their mobile and the checkpoint from it; the
+file upload is hidden and the bundled test image does the run. `lib/pass.ts` validates the pass
+with the same rules as manual entry and accepts English keys or the Arabic labels. The demo pass is
+`public/passes/leap-2026.json`, printed as `public/passes/leap-2026-qr.png`. Passes on Raqeeb's own
+domain are fetched from whichever deployment scans them, so the same code works locally. It
+publishes Khalid's mobile at a public URL, and scanning it makes the dispatch call ring that number.
+A pass location must be one of `CHECKPOINT_LOCATIONS`; `LEAP 2026 Exhibition` was added for it, so
+the backend has to be deployed before the frontend or those detections are refused.
+
 **Agencies.** Guns and knives route to the police, pliers, scissors and wrenches to airport
 security, via the `agency` field in `config/authority_mapping.yaml`, surfaced to the dashboard
 as `authority_agency`. The agency's mark appears beside the detection, in the report, in the
@@ -244,11 +256,13 @@ drop to one line. The narrative tab is the one exception and still scrolls, beca
 cannot fit.
 
 **Link previews.** `frontend/index.html` carries the description, Open Graph and Twitter card
-tags, with absolute URLs, because link crawlers do not run the app's JavaScript. The 16:9 preview
+tags, with absolute URLs, because link crawlers do not run the app's JavaScript. They are Arabic
+(`lang="ar" dir="rtl"`, `og:locale` `ar_SA`), and so is the preview image, laid out right to left;
+the only Latin left is the domain and the fixed protocol values. The 16:9 preview
 `public/og-image.jpg` and the iOS icon `public/apple-touch-icon.png` are rendered from
 `frontend/design/share-card.html`; edit that file and rerun the command at its top rather than
-editing the images. Platforms cache previews, so a changed image may need a cache-busting
-`?v=2` on the `og:image` URL before WhatsApp or LinkedIn show it.
+editing the images. Platforms cache previews, so bump the `?v=` on the `og:image` and
+`twitter:image` URLs whenever the image changes; it is at `?v=3`, the Arabic version that leads with the voice agent and a live call card.
 
 **Branding and placeholders.** The logo is `components/Logo.tsx` (a shield holding an eye) and
 `public/favicon.svg`, deliberately free of any national, ministry or company emblem because the

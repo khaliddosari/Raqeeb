@@ -19,7 +19,7 @@ from playwright.sync_api import sync_playwright
 
 HERE = Path(__file__).resolve().parent
 PUBLIC = HERE.parent / "public"
-FONTS = ['900 84px "Thmanyah Serif Display"', '700 54px "Thmanyah Sans"', '500 31px "Thmanyah Sans"']
+FONTS = ['900 92px "Thmanyah Serif Display"', '700 56px "Thmanyah Sans"', '500 29px "Thmanyah Sans"']
 
 
 def shot(page, selector: str, size: tuple[int, int]) -> Image.Image:
@@ -32,8 +32,8 @@ with sync_playwright() as p:
     page = browser.new_page(viewport={"width": 1500, "height": 800}, device_scale_factor=2)
     page.goto((HERE / "share-card.html").as_uri(), wait_until="networkidle")
     loaded = page.evaluate(
-        "async (fonts) => { await Promise.all(fonts.map(f => document.fonts.load(f, 'Raqeeb رقيب'))); "
-        "await document.fonts.ready; return fonts.every(f => document.fonts.check(f, 'Raqeeb رقيب')) }",
+        "async (fonts) => { await Promise.all(fonts.map(f => document.fonts.load(f, 'رقيب'))); "
+        "await document.fonts.ready; return fonts.every(f => document.fonts.check(f, 'رقيب')) }",
         FONTS,
     )
     if not loaded:

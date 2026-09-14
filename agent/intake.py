@@ -19,6 +19,7 @@ CHECKPOINT_LOCATIONS: tuple[str, ...] = (
     "Terminal 4",
     "Terminal 5",
     "Private Aviation Terminal",
+    "LEAP 2026 Exhibition",
 )
 
 # Saudi mobiles are 5 followed by eight digits, written as 05XXXXXXXX locally or with the

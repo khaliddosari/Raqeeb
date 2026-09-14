@@ -70,6 +70,22 @@ const en = {
     employeeNumberHelp: "Saudi mobile. The dispatch call rings this number.",
     employeeNumberInvalid: "Enter a Saudi mobile number, such as 0551234567.",
     location: "Location",
+    modeManual: "Manual entry",
+    modeQr: "Scan pass",
+    modeLabel: "How to enter the shift details",
+    scanPreview: "Camera preview for scanning a pass",
+    scanStarting: "Starting the camera…",
+    scanPrompt: "Hold the boarding pass QR code up to the camera",
+    scanReading: "Reading the pass…",
+    scanDenied: "Camera access is blocked. Allow it in the browser, or use manual entry.",
+    scanUnavailable: "No camera is available. Use manual entry instead.",
+    scanInvalid: "That code is not a Raqeeb pass. Try another one.",
+    scanUnreachable: "The pass could not be loaded. Check the connection and scan again.",
+    scanRetry: "Try again",
+    passTitle: "Pass scanned",
+    dutyEmployee: "On-duty employee",
+    rescan: "Scan again",
+    scanFirst: "Scan a pass first to run the test image.",
     frame: "Frame image",
     chooseFile: "Choose file",
     noFile: "No file chosen",
@@ -215,6 +231,7 @@ const AR_LOCATIONS: Record<string, string> = {
   "Terminal 4": "الصالة 4",
   "Terminal 5": "الصالة 5",
   "Private Aviation Terminal": "صالة الطيران الخاص",
+  "LEAP 2026 Exhibition": "معرض LEAP 2026",
 }
 
 const AR_AGENCIES: Record<string, string> = {
@@ -228,6 +245,13 @@ const AR_ROLES: Record<string, string> = {
 }
 
 const lookup = (table: Record<string, string>) => (value: string) => table[value] ?? value
+
+/** The stored checkpoint code for a location written either as that code or as its Arabic name. */
+export function locationCode(name: string): string | null {
+  const trimmed = name.trim()
+  if (trimmed in AR_LOCATIONS) return trimmed
+  return Object.keys(AR_LOCATIONS).find((code) => AR_LOCATIONS[code] === trimmed) ?? null
+}
 
 const ar: Dict = {
   brand: "رقيب",
@@ -271,6 +295,22 @@ const ar: Dict = {
     employeeNumberHelp: "رقم جوال سعودي، ويُوجَّه إليه اتصال الإبلاغ.",
     employeeNumberInvalid: "أدخل رقم جوال سعوديًا، مثل 0551234567.",
     location: "الموقع",
+    modeManual: "إدخال يدوي",
+    modeQr: "مسح البطاقة",
+    modeLabel: "طريقة إدخال بيانات المناوبة",
+    scanPreview: "معاينة الكاميرا لمسح البطاقة",
+    scanStarting: "جارٍ تشغيل الكاميرا…",
+    scanPrompt: "وجّه رمز QR في بطاقة الصعود نحو الكاميرا",
+    scanReading: "جارٍ قراءة البطاقة…",
+    scanDenied: "الوصول إلى الكاميرا محظور. اسمح به من المتصفح أو استخدم الإدخال اليدوي.",
+    scanUnavailable: "لا توجد كاميرا متاحة. استخدم الإدخال اليدوي.",
+    scanInvalid: "هذا الرمز ليس بطاقة رقيب. جرّب رمزًا آخر.",
+    scanUnreachable: "تعذّر تحميل البطاقة. تحقق من الاتصال وامسح الرمز مجددًا.",
+    scanRetry: "إعادة المحاولة",
+    passTitle: "تمت قراءة البطاقة",
+    dutyEmployee: "الموظف المناوب",
+    rescan: "إعادة المسح",
+    scanFirst: "امسح البطاقة أولًا لتشغيل الصورة الجاهزة.",
     frame: "صورة الفحص",
     chooseFile: "اختيار ملف",
     noFile: "لم يُختر ملف",

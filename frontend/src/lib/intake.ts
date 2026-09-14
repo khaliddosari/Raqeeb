@@ -8,6 +8,7 @@ export const CHECKPOINT_LOCATIONS = [
   "Terminal 4",
   "Terminal 5",
   "Private Aviation Terminal",
+  "LEAP 2026 Exhibition",
 ] as const
 
 export type CheckpointLocation = (typeof CHECKPOINT_LOCATIONS)[number]

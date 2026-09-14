@@ -22,6 +22,7 @@ CHECKPOINT_LOCATIONS_AR: dict[str, str] = {
     "Terminal 4": "الصالة 4",
     "Terminal 5": "الصالة 5",
     "Private Aviation Terminal": "صالة الطيران الخاص",
+    "LEAP 2026 Exhibition": "معرض LEAP 2026",
 }
 
 AGENCIES_AR: dict[str, str] = {

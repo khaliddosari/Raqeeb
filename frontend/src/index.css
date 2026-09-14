@@ -257,6 +257,12 @@ a, button, input, label, select, [role="tab"], [role="combobox"], [role="option"
   }
 }
 
+/* The pass scanner's line, across the viewfinder and back. */
+@keyframes raqeeb-qr-sweep {
+  0%, 100% { top: 8%; }
+  50% { top: 90%; }
+}
+
 /* The empty scanner's sweep, top of the bag to the bottom and back. */
 @keyframes raqeeb-scan {
   0%, 100% { transform: translateY(-16px); }
