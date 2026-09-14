@@ -86,16 +86,17 @@ def get_incident(incident_id: str, db: Session = Depends(get_db)):
     return _serialize(incident)
 
 
-def _agency_for(detection_class: str | None) -> str | None:
+def _mapped_authority(detection_class: str | None):
     if not detection_class:
         return None
     try:
-        return get_authority_for_class(detection_class).agency
+        return get_authority_for_class(detection_class)
     except ValueError:
         return None
 
 
 def _serialize(incident: Incident) -> dict:
+    mapped = _mapped_authority(incident.detection_class)
     annotated = None
     if incident.image_path:
         candidate = YoloDetector.annotated_path_for(incident.image_path)
@@ -118,7 +119,8 @@ def _serialize(incident: Incident) -> dict:
         "authority_name": incident.authority_name,
         # Which agency this class routes to, so the dashboard can show that agency's mark as
         # soon as the item is detected. Read from the mapping, which is the routing source of truth.
-        "authority_agency": _agency_for(incident.detection_class),
+        "authority_agency": mapped.agency if mapped else None,
+        "authority_name_ar": mapped.name_ar if mapped and incident.authority_name else None,
         "authority_phone": incident.authority_phone,
         "call_sid": incident.call_sid,
         "authority_response": incident.authority_response,

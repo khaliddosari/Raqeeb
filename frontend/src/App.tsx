@@ -57,11 +57,14 @@ const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
 
 const TEST_IMAGE_URL = `${import.meta.env.BASE_URL}test-image.png`
 
-const SUSPECT_DEFAULTS = {
-  name: "Faisal",
-  id: "1093847562",
-  notes: "Suspect is cooperative and calm",
+// Demo values, in the language the operator is working in, so a run in Arabic puts Arabic names
+// and notes in front of the call. Switching language swaps any value still at its default.
+const DEMO_DEFAULTS: Record<Lang, { employee: string; suspectName: string; suspectId: string; notes: string }> = {
+  en: { employee: "Khalid Al Dosari", suspectName: "Faisal", suspectId: "1093847562", notes: "Suspect is cooperative and calm" },
+  ar: { employee: "خالد آل دوسري", suspectName: "فيصل", suspectId: "1093847562", notes: "المشتبه به متعاون وهادئ" },
 }
+
+type TranscriptLine = { role: string; text: string; final: boolean; seq: number }
 
 const PIPELINE = ["detected", "pending_verification", "verified", "report_sent", "call_in_progress", "closed"]
 
@@ -140,7 +143,7 @@ function Emphasised({ parts }: { parts: string[] }) {
 export default function App() {
   const [lang, setLang] = useState<Lang>(initialLang)
   const t = STRINGS[lang]
-  const [employeeName, setEmployeeName] = useState("Khalid Al Dosari")
+  const [employeeName, setEmployeeName] = useState(() => DEMO_DEFAULTS[initialLang()].employee)
   // Required: the employee's identifier on the report, and the mobile the dispatch call rings.
   const [employeePhone, setEmployeePhone] = useState("")
   const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
@@ -157,9 +160,20 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(true)
-  const [suspectName, setSuspectName] = useState(SUSPECT_DEFAULTS.name)
-  const [suspectId, setSuspectId] = useState(SUSPECT_DEFAULTS.id)
-  const [suspectNotes, setSuspectNotes] = useState(SUSPECT_DEFAULTS.notes)
+  const [suspectName, setSuspectName] = useState(() => DEMO_DEFAULTS[initialLang()].suspectName)
+  const [suspectId, setSuspectId] = useState(() => DEMO_DEFAULTS[initialLang()].suspectId)
+  const [suspectNotes, setSuspectNotes] = useState(() => DEMO_DEFAULTS[initialLang()].notes)
+  const transcriptEndRef = useRef<HTMLDivElement | null>(null)
+  const followTranscript = useRef(true)
+
+  const switchLanguage = (next: Lang) => {
+    const from = DEMO_DEFAULTS[lang]
+    const to = DEMO_DEFAULTS[next]
+    setEmployeeName((value) => (value === from.employee ? to.employee : value))
+    setSuspectName((value) => (value === from.suspectName ? to.suspectName : value))
+    setSuspectNotes((value) => (value === from.notes ? to.notes : value))
+    setLang(next)
+  }
 
   useEffect(() => {
     applyDocumentLang(lang)
@@ -224,9 +238,9 @@ export default function App() {
     setBusy("detect")
     setError(null)
     setFeed([])
-    setSuspectName(SUSPECT_DEFAULTS.name)
-    setSuspectId(SUSPECT_DEFAULTS.id)
-    setSuspectNotes(SUSPECT_DEFAULTS.notes)
+    setSuspectName(DEMO_DEFAULTS[lang].suspectName)
+    setSuspectId(DEMO_DEFAULTS[lang].suspectId)
+    setSuspectNotes(DEMO_DEFAULTS[lang].notes)
     try {
       const res = await detect(file, employeeName, phoneE164, location)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
@@ -242,9 +256,9 @@ export default function App() {
     setBusy("detect")
     setError(null)
     setFeed([])
-    setSuspectName(SUSPECT_DEFAULTS.name)
-    setSuspectId(SUSPECT_DEFAULTS.id)
-    setSuspectNotes(SUSPECT_DEFAULTS.notes)
+    setSuspectName(DEMO_DEFAULTS[lang].suspectName)
+    setSuspectId(DEMO_DEFAULTS[lang].suspectId)
+    setSuspectNotes(DEMO_DEFAULTS[lang].notes)
     try {
       const blob = await (await fetch(TEST_IMAGE_URL)).blob()
       const testFile = new File([blob], "test-image.png", { type: blob.type || "image/png" })
@@ -280,16 +294,48 @@ export default function App() {
     return i === -1 ? 0 : i
   }, [incident])
 
-  const transcript = useMemo(() => {
-    const liveLines = feed.filter((e): e is Extract<MonitorEvent, { type: "transcript" }> => e.type === "transcript")
-    if (liveLines.length) return liveLines.map((l) => ({ role: l.role, text: l.text }))
-    return incident?.authority_response?.raw_transcript ?? []
+  // Live lines are re-sent whole as they grow, keyed by item_id: keep the latest version of each
+  // and order by seq, the turn's place in the conversation, since the authority's words are often
+  // transcribed after the agent has already started answering. Lines without an id (the
+  // audio-bridged call path) are appended in arrival order. After a restart, the stored
+  // transcript stands in.
+  const transcript = useMemo<TranscriptLine[]>(() => {
+    const keyed = new Map<string, TranscriptLine>()
+    const loose: TranscriptLine[] = []
+    let arrival = 0
+    for (const event of feed) {
+      if (event.type !== "transcript") continue
+      arrival += 1
+      const line = { role: event.role, text: event.text, final: event.final ?? true, seq: event.seq ?? arrival }
+      if (event.item_id) keyed.set(event.item_id, line)
+      else loose.push(line)
+    }
+    const live = [...keyed.values(), ...loose].sort((a, b) => a.seq - b.seq)
+    if (live.length) return live
+    return (incident?.authority_response?.raw_transcript ?? []).map((line, i) => ({ ...line, final: true, seq: i }))
   }, [feed, incident])
+
+  // Follow the conversation as it streams, unless the operator has scrolled up to reread.
+  const hasTranscript = transcript.length > 0
+  useEffect(() => {
+    const viewport = transcriptEndRef.current?.closest<HTMLElement>("[data-slot=scroll-area-viewport]")
+    if (!viewport) return
+    const onScroll = () => {
+      followTranscript.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 32
+    }
+    viewport.addEventListener("scroll", onScroll, { passive: true })
+    return () => viewport.removeEventListener("scroll", onScroll)
+  }, [hasTranscript])
+  useEffect(() => {
+    const viewport = transcriptEndRef.current?.closest<HTMLElement>("[data-slot=scroll-area-viewport]")
+    if (viewport && followTranscript.current) viewport.scrollTop = viewport.scrollHeight
+  }, [transcript])
 
   const dispatch = incident?.authority_response
   const report = incident?.report
   const confidencePct = ((incident?.detection_confidence ?? 0) * 100).toFixed(2)
   const agency = incident && isAgency(incident.authority_agency) ? incident.authority_agency : null
+  const authorityName = (lang === "ar" && incident?.authority_name_ar) || incident?.authority_name || null
 
   // Each panel's pill, on the universal idle / running / done / malfunction scale.
   const inferenceStatus: { label: string; tone: Tone } =
@@ -360,7 +406,7 @@ export default function App() {
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setLang(t.switchToLang)}
+                onClick={() => switchLanguage(t.switchToLang)}
                 aria-label={t.switchToLabel}
                 className="h-10 bg-white/70 px-3 text-sm lg:h-8"
               >
@@ -813,9 +859,9 @@ export default function App() {
                         {agency && <span className="text-sm font-semibold">{t.agency(agency)}</span>}
                         <bdi
                           className={agency ? "truncate text-xs text-muted-foreground" : "truncate text-sm"}
-                          title={incident?.authority_name ?? undefined}
+                          title={authorityName ?? undefined}
                         >
-                          {incident?.authority_name ?? "—"}
+                          {authorityName ?? "—"}
                         </bdi>
                       </span>
                     </dd>
@@ -847,17 +893,25 @@ export default function App() {
                   </div>
                   {transcript.length ? (
                     <ScrollArea className="h-56 desk:h-auto desk:min-h-0 desk:flex-1">
-                      <div className="flex flex-col gap-3 pe-3">
-                        {transcript.map((line, i) => (
-                          <div key={i} className="flex flex-col gap-1">
+                      {/* new turns are announced; words filling in an existing turn are not */}
+                      <div className="flex flex-col gap-3 pe-3" aria-live="polite" aria-relevant="additions">
+                        {transcript.map((line) => (
+                          <div key={line.seq} className="flex flex-col gap-1">
                             <span className="font-mono text-xs uppercase tracking-wide text-muted-foreground rtl:font-sans">
                               {t.call.role(line.role)}
                             </span>
                             <p dir="auto" className="text-sm leading-relaxed">
                               {line.text}
+                              {!line.final && (
+                                <span
+                                  aria-hidden="true"
+                                  className="ms-1.5 inline-block size-1.5 rounded-full bg-blue-600 align-middle motion-safe:animate-pulse"
+                                />
+                              )}
                             </p>
                           </div>
                         ))}
+                        <div ref={transcriptEndRef} />
                       </div>
                     </ScrollArea>
                   ) : (
@@ -940,7 +994,7 @@ export default function App() {
                           <Emphasised
                             parts={t.judgment.routingBody(
                               report?.severity ? t.severity(report.severity) : "—",
-                              incident.authority_name ?? "—",
+                              authorityName ?? "—",
                             )}
                           />
                         </p>

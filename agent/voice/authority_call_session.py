@@ -21,10 +21,13 @@ from agent.voice.authority_prompts import RECORD_DISPATCH_CONFIRMATION_TOOL, bui
 
 
 class AuthorityCallSession:
-    def __init__(self, websocket: WebSocket, *, incident_id: str, report: dict[str, Any]) -> None:
+    def __init__(
+        self, websocket: WebSocket, *, incident_id: str, report: dict[str, Any], authority: dict[str, Any] | None = None
+    ) -> None:
         self.websocket = websocket
         self.incident_id = incident_id
         self.report = report
+        self.authority = authority or {}
         self.stream_sid: str | None = None
         self.transcript: list[dict[str, str]] = []
         self._result: dict[str, Any] | None = None
@@ -33,7 +36,7 @@ class AuthorityCallSession:
         self._hangup_safety_net_task: asyncio.Task | None = None
 
     def _system_instruction(self) -> str:
-        return build_dispatch_instructions(self.incident_id, self.report)
+        return build_dispatch_instructions(self.incident_id, self.report, self.authority)
 
     async def run(self) -> dict[str, Any]:
         llm = get_llm_provider()

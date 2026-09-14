@@ -39,10 +39,10 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is 20 tests, all passing: four drive the LangGraph workflow with mock providers,
-one drives the OpenAI call webhook over the on-disk checkpointer, and the rest cover the intake
-rules in `agent/intake.py` (which phone numbers and locations are accepted) and the
-class-to-agency routing. No other route, no WebSocket, and none of the frontend is tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
+The test suite is 24 tests, all passing: four drive the LangGraph workflow with mock providers,
+one drives the OpenAI call webhook over the on-disk checkpointer, four hold the call to Arabic and
+check the live transcript's ordering, and the rest cover the intake rules in `agent/intake.py`
+(which phone numbers and locations are accepted) and the class-to-agency routing. No other route, no WebSocket, and none of the frontend is tested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
 
 ## How the pieces fit
 
@@ -90,6 +90,28 @@ G.711 mu-law the telephony media streams already carry.
 
 `signalwire` is a drop-in replacement for `twilio`; its compatibility API mirrors Twilio's and
 both reuse the same webhook routes.
+
+### The call is Arabic end to end
+
+Nothing about the authority call is English. The instructions in
+`agent/voice/authority_prompts.py` are written in Arabic, tell the agent to stay in Saudi dialect
+even if the other party speaks English, and introduce it as Raqeeb at that checkpoint, calling the
+agency the class routes to. Every fact handed over is converted from its stored code first:
+`agent/arabic.py` holds the Arabic for classes, checkpoints, agencies and dates, and `name_ar` in
+`config/authority_mapping.yaml` names each responding unit. Keep `agent/arabic.py` identical to the
+dashboard's Arabic dictionary so the call and the screen use the same words.
+`tests/test_call_arabic.py` fails if any Latin text reaches the instructions other than the tool's
+function name and the incident reference code.
+
+**The transcript streams live.** On the OpenAI path the call is observed over a WebSocket, and
+`LiveTranscript` in `agent/voice/sip_authority_call.py` publishes both sides as they speak: the
+agent's words as it says them, the authority's as they are transcribed. Each line carries an
+`item_id` and is re-sent whole as it grows, plus a `seq` for its place in the conversation, because
+the authority's words usually finish transcribing after the agent has started replying.
+`agent/monitor.py` keeps only the latest version of each line in its replay history, and the
+dashboard keeps one line per `item_id`, ordered by `seq`. Anything new that publishes growing text
+should follow the same shape rather than appending an event per word, or a late-joining dashboard
+replays hundreds of fragments and a busy call can overflow a subscriber's queue.
 
 ## Deployment
 

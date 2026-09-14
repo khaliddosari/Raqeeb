@@ -52,8 +52,8 @@ async def test_incoming_call_webhook_accepts_with_on_disk_checkpoints(tmp_path, 
 
     accepted: dict = {}
 
-    async def fake_accept(call_id, incident_id, report):
-        accepted.update(call_id=call_id, incident_id=incident_id, report=report)
+    async def fake_accept(call_id, incident_id, report, authority):
+        accepted.update(call_id=call_id, incident_id=incident_id, report=report, authority=authority)
 
     async def fake_observe(call_id, incident_id):
         return None
@@ -86,3 +86,4 @@ async def test_incoming_call_webhook_accepts_with_on_disk_checkpoints(tmp_path, 
     assert accepted["call_id"] == "rtc_test_1"
     assert accepted["incident_id"] == incident_id
     assert accepted["report"]["detected_item"] == "Gun"
+    assert accepted["authority"]["agency"] == "police"
