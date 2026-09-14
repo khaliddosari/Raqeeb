@@ -243,6 +243,13 @@ report goes to four columns, and below 752px tall (`desk-tight`) the judgment's 
 drop to one line. The narrative tab is the one exception and still scrolls, because a full report
 cannot fit.
 
+**Link previews.** `frontend/index.html` carries the description, Open Graph and Twitter card
+tags, with absolute URLs, because link crawlers do not run the app's JavaScript. The 16:9 preview
+`public/og-image.jpg` and the iOS icon `public/apple-touch-icon.png` are rendered from
+`frontend/design/share-card.html`; edit that file and rerun the command at its top rather than
+editing the images. Platforms cache previews, so a changed image may need a cache-busting
+`?v=2` on the `og:image` URL before WhatsApp or LinkedIn show it.
+
 **Branding and placeholders.** The logo is `components/Logo.tsx` (a shield holding an eye) and
 `public/favicon.svg`, deliberately free of any national, ministry or company emblem because the
 product is pitched to government and private security agencies alike; keep new artwork neutral
