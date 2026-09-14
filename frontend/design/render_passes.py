@@ -63,7 +63,8 @@ def page() -> str:
         details = "".join(f"<div><dt>{e(label)}</dt><dd>{e(detail)}</dd></div>" for label, detail in checkpoint.scenario)
         panels.append(
             f'<section class="panel" data-slug="{slug}" aria-label="{e(name)}"{"" if selected else " hidden"}>'
-            f'<div class="code"><img src="./{slug}-qr.png" width="656" height="656" alt="رمز QR لبطاقة مناوبة {e(name)}" /></div>'
+            # absolute: the page is served at /passes too, where ./ would resolve to the site root
+            f'<div class="code"><img src="/passes/{slug}-qr.png" width="656" height="656" alt="رمز QR لبطاقة مناوبة {e(name)}" /></div>'
             f'<div class="pass">'
             f'<h2>{e(name)}</h2>'
             f'<dl class="facts">'
@@ -71,7 +72,7 @@ def page() -> str:
             f'<div><dt>رقم الموظف</dt><dd dir="ltr">{e(EMPLOYEE_NUMBER)}</dd></div>'
             f"</dl>"
             f'<h3>تفاصيل السيناريو</h3><dl class="details">{details}</dl>'
-            f'<a class="link" href="./{slug}.json">محتوى البطاقة</a>'
+            f'<a class="link" href="/passes/{slug}.json">محتوى البطاقة</a>'
             f"</div></section>"
         )
 
