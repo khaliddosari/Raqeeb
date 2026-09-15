@@ -618,9 +618,6 @@ export default function App() {
                       {file ? file.name : t.inference.noFile}
                     </span>
                   </div>
-                  <Button onClick={runDetection} disabled={!file || busy !== null || !detailsReady} className="h-11 w-full desk:h-8">
-                    {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
-                  </Button>
                   {/* the bundled frame: its thumbnail beside the button, at every size */}
                   <div className="flex flex-row-reverse items-center gap-2.5 rounded-xl bg-white/55 p-2.5 ring-1 ring-primary/12 desk-short:p-2">
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -648,6 +645,9 @@ export default function App() {
                       />
                     </button>
                   </div>
+                  <Button onClick={runDetection} disabled={!file || busy !== null || !detailsReady} className="h-11 w-full desk:h-8">
+                    {busy === "detect" ? t.inference.runningDetection : t.inference.runDetection}
+                  </Button>
                 </div>
               </ScrollArea>
 
