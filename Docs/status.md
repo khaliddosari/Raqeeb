@@ -329,6 +329,15 @@ loads its images by absolute path, because it is also served at `/passes` withou
 Deploy the backend before the frontend whenever checkpoints or the manual-info route change, or the
 dashboard's requests are refused.
 
+**The poster page, https://raqeeb.khalid-ai.dev/poster.** An Arabic, phone-first page to open from a
+printed poster: logo, a short description, the team's LinkedIn links, the four steps, the tech
+stack, and a "جرّب رقيب" button into the dashboard that stays pinned to the bottom of the screen. It is one
+hand-written file, `public/poster/index.html`, with no build step and no JavaScript. Its look is
+copied rather than shared: the palette, glass and ambient wash from `src/index.css`, the logo from
+`Logo.tsx`, and the links from `TEAM` in `App.tsx`, so a change to any of those needs repeating
+there by hand. `vercel.json` routes `/poster` to it, the same way as `/passes`. Keep the page's
+background colour on `body` only: a background on `html` as well paints over the ambient wash.
+
 **Agencies.** Guns and knives route to the police, pliers, scissors and wrenches to airport
 security, via the `agency` field in `config/authority_mapping.yaml`, surfaced to the dashboard
 as `authority_agency`. The agency's mark appears beside the detection, in the report, in the

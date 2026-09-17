@@ -1,0 +1,354 @@
+<!doctype html>
+<!--
+  The poster page, served at /poster through the rewrites in frontend/vercel.json. Hand-written and
+  not part of the Vite build. Its look is copied from the dashboard: the palette, glass panels and
+  ambient wash from src/index.css, the logo from src/components/Logo.tsx, and the team's LinkedIn
+  links from TEAM in src/App.tsx. Change those together. Assets load by absolute path, because the
+  page is also served at /poster without a trailing slash.
+-->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>رقيب · تعرّف على المشروع والفريق</title>
+<meta name="description" content="رقيب وكيل صوتي ذكي يتصل بالجهة المختصة فور رصد المواد المحظورة في صور الأشعة السينية. مصمَّم للجهات الأمنية الحكومية والخاصة." />
+<meta name="theme-color" content="#f3f6fb" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="canonical" href="https://raqeeb.khalid-ai.dev/poster" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="رقيب" />
+<meta property="og:url" content="https://raqeeb.khalid-ai.dev/poster" />
+<meta property="og:locale" content="ar_SA" />
+<meta property="og:title" content="رقيب · تعرّف على المشروع والفريق" />
+<meta property="og:description" content="وكيل صوتي ذكي يتصل بالجهة المختصة فور رصد المواد المحظورة في صور الأشعة السينية. مصمَّم للجهات الأمنية الحكومية والخاصة." />
+<meta property="og:image" content="https://raqeeb.khalid-ai.dev/og-image.jpg?v=3" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="675" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content="https://raqeeb.khalid-ai.dev/og-image.jpg?v=3" />
+
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahserifdisplay/woff2/thmanyahserifdisplay-Black.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Bold.woff2" />
+<style>
+@font-face { font-family: "Thmanyah Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Regular.woff2") format("woff2"); }
+@font-face { font-family: "Thmanyah Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Medium.woff2") format("woff2"); }
+@font-face { font-family: "Thmanyah Sans"; font-weight: 700; font-style: normal; font-display: swap; src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahsans/woff2/thmanyahsans-Bold.woff2") format("woff2"); }
+@font-face { font-family: "Thmanyah Serif Display"; font-weight: 900; font-style: normal; font-display: swap; src: url("https://cdn.jsdelivr.net/gh/khaliddosari/thmanyah-fonts@v1/thmanyah%20typeface/thmanyahserifdisplay/woff2/thmanyahserifdisplay-Black.woff2") format("woff2"); }
+
+/* The dashboard's navy light theme, token for token. */
+:root {
+  color-scheme: light;
+  --background: oklch(0.975 0.01 250);
+  --foreground: oklch(0.16 0.045 258);
+  --card: oklch(1 0 0 / 0.66);
+  --primary: oklch(0.3 0.105 262);
+  --primary-foreground: oklch(0.98 0.008 250);
+  --secondary: oklch(0.92 0.03 252 / 0.9);
+  --secondary-foreground: oklch(0.25 0.09 262);
+  --muted-foreground: oklch(0.36 0.045 258);
+  --accent: oklch(0.91 0.04 252 / 0.85);
+  --border: oklch(0.5 0.06 258 / 0.26);
+  --ring: oklch(0.45 0.1 260);
+  --radius: 0.9rem;
+  --glass-edge: oklch(1 0 0 / 0.7);
+  --glass-shadow: 0 1px 2px oklch(0.28 0.09 262 / 0.06), 0 12px 36px -14px oklch(0.28 0.09 262 / 0.3);
+  /* Thmanyah's swash letterforms, which the dashboard keeps for headings, buttons and the team's names */
+  --ornate: "ss01", "ss03", "ss04", "ss05", "ss06", "ss07", "ss08", "salt", "swsh", "dlig", "frac";
+}
+
+* { box-sizing: border-box; }
+/* The colour sits on body alone, as in the dashboard: it spreads to the whole canvas and the wash
+   below paints over it. A background on html as well would cover the wash. */
+html {
+  font-family: "Thmanyah Sans", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+/* the same ambient wash, so the glass has something behind it to blur */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(50rem 34rem at 6% -10%, oklch(0.62 0.14 258 / 0.5), transparent 60%),
+    radial-gradient(44rem 32rem at 100% 4%, oklch(0.7 0.11 232 / 0.42), transparent 62%),
+    radial-gradient(46rem 40rem at 88% 96%, oklch(0.42 0.13 264 / 0.3), transparent 62%),
+    radial-gradient(38rem 34rem at 22% 88%, oklch(0.66 0.12 272 / 0.26), transparent 64%);
+}
+p { overflow-wrap: anywhere; }
+a, button { touch-action: manipulation; }
+.ornate, h1, h2, h3 { font-feature-settings: var(--ornate); }
+
+.poster {
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- hero ---- */
+.hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 16px 4px 8px; }
+.logo { width: 88px; height: 88px; filter: drop-shadow(0 10px 22px oklch(0.28 0.09 262 / 0.3)); }
+.wordmark {
+  margin: 8px 0 0;
+  font-family: "Thmanyah Serif Display", "Thmanyah Sans", serif;
+  font-weight: 900;
+  font-size: 3.5rem;
+  line-height: 1.15;
+}
+.eyebrow {
+  margin-top: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 14px 5px;
+  border-radius: 999px;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  box-shadow: 0 0 0 1px var(--glass-edge);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+.eyebrow svg { width: 1rem; height: 1rem; }
+.headline { margin: 14px 0 0; font-size: 1.75rem; line-height: 1.4; font-weight: 700; text-wrap: balance; }
+.lead { margin: 8px 0 0; max-width: 30rem; color: var(--muted-foreground); line-height: 1.75; text-wrap: pretty; }
+
+/* ---- glass panels, as SectionShell draws them ---- */
+.panel {
+  border-radius: calc(var(--radius) * 1.8);
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--glass-edge), var(--glass-shadow);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+}
+.panel-head { padding: 12px 16px 10px; border-bottom: 1px solid oklch(0.3 0.105 262 / 0.15); }
+.panel-title { display: flex; align-items: center; gap: 8px; }
+.index {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Thmanyah Sans", monospace;
+  font-size: 1.25rem;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+h2 { margin: 0; font-size: 1.0625rem; line-height: 1.5; font-weight: 700; }
+.caption { margin: 2px 0 0; font-size: 0.8125rem; color: var(--muted-foreground); }
+.panel-body { padding: 16px; }
+
+/* ---- how it works ---- */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.step { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: 12px; align-items: start; }
+.step-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: calc(var(--radius) * 0.8);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 6px 16px -8px oklch(0.28 0.09 262 / 0.7);
+}
+.step-icon svg { width: 1.25rem; height: 1.25rem; }
+h3 { margin: 0; font-size: 1rem; line-height: 1.5; font-weight: 700; }
+.step p { margin: 0; font-size: 0.9375rem; line-height: 1.65; color: var(--muted-foreground); }
+
+/* ---- tech stack ---- */
+.stack { margin: 0; display: grid; gap: 14px; }
+.stack dt { margin-bottom: 6px; font-size: 0.8125rem; font-weight: 700; color: var(--muted-foreground); }
+.stack dd { margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0 12px 1px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: oklch(1 0 0 / 0.7);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ---- team ---- */
+.team { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.member {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 3.5rem;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: oklch(1 0 0 / 0.7);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--foreground);
+  text-decoration: none;
+  transition: background-color 0.15s, box-shadow 0.15s;
+}
+.member:hover { background: var(--accent); }
+.member:focus-visible, .cta:focus-visible { outline: 3px solid oklch(0.45 0.1 260 / 0.5); outline-offset: 2px; }
+.member .in { width: 2rem; height: 2rem; flex: none; color: var(--primary); }
+.member-name { display: block; font-weight: 700; line-height: 1.35; font-feature-settings: var(--ornate); }
+.member-note { display: block; font-size: 0.8125rem; line-height: 1.3; color: var(--muted-foreground); }
+.member .go { width: 1.125rem; height: 1.125rem; flex: none; margin-inline-start: auto; color: var(--muted-foreground); }
+
+/* ---- the way into the dashboard: sticks to the bottom of the screen until the page ends ---- */
+.cta-bar { position: sticky; bottom: 0; z-index: 10; padding: 8px 0 max(14px, env(safe-area-inset-bottom)); }
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 3.5rem;
+  padding: 0 24px 2px;
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-decoration: none;
+  font-feature-settings: var(--ornate);
+  box-shadow: 0 0 0 1px oklch(1 0 0 / 0.14) inset, 0 1px 2px oklch(0.28 0.09 262 / 0.2), 0 16px 34px -12px oklch(0.28 0.09 262 / 0.7);
+  transition: background-color 0.15s, transform 0.15s;
+}
+.cta:hover { background: oklch(0.36 0.11 262); }
+.cta:active { transform: translateY(1px); }
+.cta svg { width: 1.25rem; height: 1.25rem; }
+
+footer {
+  margin-bottom: max(20px, env(safe-area-inset-bottom));
+  padding-top: 14px;
+  border-top: 1px solid oklch(0.5 0.06 258 / 0.16);
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+footer bdi { display: block; margin-top: 2px; font-weight: 500; color: var(--primary); }
+
+@media (min-width: 30rem) {
+  .team { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 48rem) {
+  .poster { max-width: 40rem; padding-top: 48px; gap: 20px; }
+  .logo { width: 104px; height: 104px; }
+  .wordmark { font-size: 4.25rem; }
+  .headline { font-size: 2.125rem; }
+  .panel-body { padding: 20px; }
+}
+
+/* Glass depends on translucency: fall back to an opaque surface rather than an unreadable one. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --card: oklch(1 0 0 / 0.95); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --card: oklch(1 0 0 / 0.97); }
+  body::before { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+<main class="poster">
+  <header class="hero">
+    <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M16 2.75 26.5 6.6v8.15c0 6.55-4.35 11.9-10.5 14.5-6.15-2.6-10.5-7.95-10.5-14.5V6.6z" fill="oklch(0.3 0.105 262)" />
+      <path d="M16 4.4 25 7.7v1.1L16 5.5 7 8.8V7.7z" fill="rgb(255 255 255 / 0.25)" />
+      <path d="M8.75 16c1.9-3.1 4.3-4.65 7.25-4.65S21.35 12.9 23.25 16c-1.9 3.1-4.3 4.65-7.25 4.65S10.65 19.1 8.75 16z" fill="none" stroke="oklch(0.98 0.008 250)" stroke-width="1.7" stroke-linejoin="round" />
+      <circle cx="16" cy="16" r="2.3" fill="oklch(0.98 0.008 250)" />
+    </svg>
+    <h1 class="wordmark">رقيب</h1>
+    <span class="eyebrow ornate">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M19 10a7 7 0 0 1-14 0M12 17v5M8 22h8" /></svg>
+      وكيل صوتي ذكي
+    </span>
+    <p class="headline ornate">يتصل بالجهة المختصة فور رصد التهديد</p>
+    <p class="lead">من صورة الأشعة السينية للأمتعة إلى مكالمة حية يطلب فيها إرسال الفريق، باللهجة السعودية. مصمَّم للجهات الأمنية الحكومية والخاصة.</p>
+  </header>
+
+  <section class="panel" aria-labelledby="team-title">
+    <div class="panel-head">
+      <div class="panel-title"><span class="index">1</span><h2 id="team-title">الفريق</h2></div>
+      <p class="caption">تواصل معنا على لينكدإن.</p>
+    </div>
+    <div class="panel-body">
+      <ul class="team">
+        <li><a class="member" href="https://www.linkedin.com/in/khalid-al-dosari/" target="_blank" rel="noreferrer noopener" aria-label="خالد آل دوسري على لينكدإن"><svg class="in" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg><span><span class="member-name">خالد آل دوسري</span><span class="member-note">لينكدإن</span></span><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17V7h10" /><path d="M17 17 7 7" /></svg></a></li>
+        <li><a class="member" href="https://www.linkedin.com/in/nawaf-alsharani-a431b731a/" target="_blank" rel="noreferrer noopener" aria-label="نواف الشهراني على لينكدإن"><svg class="in" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg><span><span class="member-name">نواف الشهراني</span><span class="member-note">لينكدإن</span></span><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17V7h10" /><path d="M17 17 7 7" /></svg></a></li>
+        <li><a class="member" href="https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/" target="_blank" rel="noreferrer noopener" aria-label="يزيد بن شيحة على لينكدإن"><svg class="in" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg><span><span class="member-name">يزيد بن شيحة</span><span class="member-note">لينكدإن</span></span><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17V7h10" /><path d="M17 17 7 7" /></svg></a></li>
+        <li><a class="member" href="https://www.linkedin.com/in/omar-al-dhawyan-789336269/" target="_blank" rel="noreferrer noopener" aria-label="عمر الضويان على لينكدإن"><svg class="in" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 1 1 0-4.125 2.062 2.062 0 0 1 0 4.125zM7.119 20.452H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg><span><span class="member-name">عمر الضويان</span><span class="member-note">لينكدإن</span></span><svg class="go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17V7h10" /><path d="M17 17 7 7" /></svg></a></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="how-title">
+    <div class="panel-head">
+      <div class="panel-title"><span class="index">2</span><h2 id="how-title">كيف يعمل</h2></div>
+      <p class="caption">أربع خطوات، ولا يُبلَّغ عن شيء قبل أن يؤكده الموظف.</p>
+    </div>
+    <div class="panel-body">
+      <ol class="steps">
+        <li class="step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></svg></span>
+          <div><h3>الكشف</h3><p>يرصد النموذج خمس فئات من المواد المحظورة في صور الأشعة السينية: الأسلحة النارية والسكاكين والكماشات والمقصات ومفاتيح الربط.</p></div>
+        </li>
+        <li class="step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="m16 11 2 2 4-4" /></svg></span>
+          <div><h3>التحقق</h3><p>يتحقق الموظف المناوب من التهديد ميدانيًا، ويُدخل بيانات حامل الحقيبة أو يمسح بطاقته.</p></div>
+        </li>
+        <li class="step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg></span>
+          <div><h3>البلاغ</h3><p>يكتب الوكيل البلاغ ويوجّهه إلى الجهة المختصة: الشرطة للأسلحة النارية والسكاكين، وأمن المطار للأدوات.</p></div>
+        </li>
+        <li class="step">
+          <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg></span>
+          <div><h3>الاتصال</h3><p>يتصل بالجهة باللهجة السعودية ويطلب إرسال الفريق، ويُبث نص المكالمة على اللوحة لحظة بلحظة.</p></div>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="stack-title">
+    <div class="panel-head">
+      <div class="panel-title"><span class="index">3</span><h2 id="stack-title">التقنيات المستخدمة</h2></div>
+      <p class="caption">من تدريب النموذج إلى المكالمة الحية.</p>
+    </div>
+    <div class="panel-body">
+      <dl class="stack">
+        <div><dt>الرؤية الحاسوبية</dt><dd><span class="chip" dir="ltr">YOLOv8-OBB</span><span class="chip" dir="ltr">Ultralytics</span><span class="chip" dir="ltr">OpenCV</span><span class="chip" dir="ltr">BoT-SORT</span><span class="chip" dir="ltr">Roboflow</span></dd></div>
+        <div><dt>الوكيل الصوتي</dt><dd><span class="chip" dir="ltr">OpenAI Realtime</span><span class="chip" dir="ltr">GPT-4o mini</span><span class="chip" dir="ltr">Twilio</span><span class="chip" dir="ltr">LangGraph</span></dd></div>
+        <div><dt>الخادم</dt><dd><span class="chip" dir="ltr">Python</span><span class="chip" dir="ltr">FastAPI</span><span class="chip" dir="ltr">SQLAlchemy</span><span class="chip" dir="ltr">SQLite</span></dd></div>
+        <div><dt>الواجهة</dt><dd><span class="chip" dir="ltr">React</span><span class="chip" dir="ltr">TypeScript</span><span class="chip" dir="ltr">Vite</span><span class="chip" dir="ltr">Tailwind CSS</span><span class="chip" dir="ltr">shadcn/ui</span></dd></div>
+        <div><dt>الاستضافة</dt><dd><span class="chip" dir="ltr">Modal</span><span class="chip" dir="ltr">Vercel</span><span class="chip" dir="ltr">Cloudflare</span></dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <div class="cta-bar">
+    <a class="cta" href="/">
+      جرّب رقيب
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg>
+    </a>
+  </div>
+
+  <footer>
+    رقيب · الفحص والاستجابة للجهات الأمنية الحكومية والخاصة
+    <bdi dir="ltr">raqeeb.khalid-ai.dev</bdi>
+  </footer>
+</main>
+</body>
+</html>

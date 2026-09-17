@@ -13,6 +13,14 @@
       "destination": "/passes/index.html"
     },
     {
+      "source": "/poster",
+      "destination": "/poster/index.html"
+    },
+    {
+      "source": "/poster/",
+      "destination": "/poster/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
