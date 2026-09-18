@@ -62,6 +62,27 @@ def telephony_audio_config() -> dict[str, Any]:
     }
 
 
+def browser_audio_config() -> dict[str, Any]:
+    """The same conversation held in a browser instead of over a phone (see
+    agent/routes/browser_call.py). No format is named: WebRTC negotiates Opus at full
+    bandwidth, so the 8kHz mu-law of the telephony path would only throw quality away. The
+    microphone is a laptop's, across a room rather than against a mouth, so noise reduction
+    is far_field."""
+    return {
+        "input": {
+            "turn_detection": {
+                "type": "semantic_vad",
+                "eagerness": "high",
+                "create_response": True,
+                "interrupt_response": True,
+            },
+            "noise_reduction": {"type": "far_field"},
+            "transcription": {"model": "gpt-4o-transcribe", "language": "ar"},
+        },
+        "output": {"voice": settings.openai_voice},
+    }
+
+
 def function_tools(tools: list[ToolSpec]) -> list[dict[str, Any]]:
     return [{"type": "function", "name": t.name, "description": t.description, "parameters": t.parameters} for t in tools]
 

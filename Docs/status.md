@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-09-14. Written for a developer joining the project.
+Last updated: 2026-09-18. Written for a developer joining the project.
 
 Raqeeb detects prohibited items in X-ray baggage scans and drives the response: a YOLOv8-OBB
 model flags an item, an employee physically verifies it, and a voice agent collects details,
@@ -17,9 +17,10 @@ It is live. The dashboard is at **https://raqeeb.khalid-ai.dev** (Vercel) and ta
 backend at `https://khaliddosari2014--raqeeb-fastapi-app.modal.run` (Modal). Both deploy from
 `main`: Vercel rebuilds on every push, Modal only when someone runs `modal deploy`.
 
-**Production runs OpenAI and live Twilio calls.** Every run on the public site writes a report
-with `gpt-4o-mini`, posts it to the authority endpoint, and places a real phone call handled by
-`gpt-realtime`. It spends real money on every run, and nothing gates who can use it (see Traps).
+**The dashboard serves two audiences.** A visitor runs the whole incident and holds the dispatch
+conversation in their own browser, so a public run spends OpenAI minutes and nothing else. Signed
+in with the team's shared password, the same dashboard places the real phone call through Twilio
+instead. See "Two audiences" below; it is the main thing to understand about the deployment.
 
 - **Production and local `.env` are both `openai` + `twilio`.** The three OpenAI values,
   `OPENAI_API_KEY`, `OPENAI_PROJECT_ID` and `OPENAI_WEBHOOK_SECRET`, are filled in. Before they
@@ -43,10 +44,10 @@ with `gpt-4o-mini`, posts it to the authority endpoint, and places a real phone 
 - **Twilio credentials are Yazeed's full account**, which owns a voice-capable number; calls
   bill to him. Khalid's own Twilio account is a trial with no number. The credentials are in
   both the local `.env` and the Modal secret.
-- **The call rings the employee's mobile, not the agency.** The mobile of the employee picked on
-  the dashboard, or a one-time number typed for a single run, replaces the configured
-  `AUTHORITY_*_PHONE` for that incident. The configured numbers are used
-  only when a request arrives without one.
+- **The call rings the employee's mobile, not the agency.** Signed in, the mobile configured for
+  the employee picked on the dashboard replaces the configured `AUTHORITY_*_PHONE` for that
+  incident. Those mobiles live only in `ADMIN_CALL_NUMBERS`, never in the repository or the
+  dashboard bundle.
 
 Everything is merged to `main`: the redesign, the Arabic call, the live transcript and the
 webhook fix, from `single-page-dashboard-design`. Vercel rebuilds the dashboard on every push to
@@ -59,15 +60,17 @@ agent and the OpenAI Realtime provider with SIP bridging. Khalid built the detec
 the tracking and MOT benchmark, the dashboard and the deployment, and owns the repo. Omar is
 the fourth contributor.
 
-The test suite is 32 tests, all passing: five drive the LangGraph workflow with mock providers
+The test suite is 39 tests, all passing: five drive the LangGraph workflow with mock providers
 (one through the manual-info route, where a scanned pass's event replaces the location),
 one drives the OpenAI call webhook over the on-disk checkpointer, five hold the call to Arabic
 (every checkpoint's spoken name and scenario included) and check the live transcript's ordering,
 six cover calls that reach no one (`tests/test_call_unanswered.py`: an answered call is always
 connected, a missed call, a call Twilio refuses to place, stale or forged Twilio webhooks, the
-retry, and a decision recorded before anyone spoke), and the
-rest cover the intake rules in `agent/intake.py` (which phone numbers and locations are accepted)
-and the class-to-agency routing. The detection and verification routes, the monitor WebSocket and
+retry, and a decision recorded before anyone spoke), seven cover the two audiences
+(`tests/test_public_mode.py`: signing in, the roster never carrying a number, a public run that
+dials nothing, a signed-in run that dials the configured mobile, and the browser conversation's
+own guards), and the rest cover the intake rules in `agent/intake.py` (which locations are
+accepted) and the class-to-agency routing. The detection and verification routes, the monitor WebSocket and
 all of the frontend are untested. There is no CI, so run `uv run pytest tests/` yourself before pushing.
 
 ## How the pieces fit
@@ -287,15 +290,37 @@ with a dot that repeats the state so colour is never the only cue. `StatusPill` 
 type are in `SectionShell.tsx`; `pipelineTone()` in `App.tsx` maps backend statuses onto them.
 Do not reintroduce amber for "waiting": waiting on the pipeline is running.
 
+**Two audiences, one dashboard.** Everything up to the dispatch call is identical for both. The
+split is who pays for the last step and who may be phoned.
+
+- **A visitor** gets `call_transport: "browser"` on the incident. `twilio_outbound_call_node`
+  places no call at all, the graph pauses at the same interrupt, and the dashboard opens a WebRTC
+  session straight to OpenAI's Realtime API: the visitor plays the authority, hears the same
+  Arabic briefing, and answers. `agent/routes/browser_call.py` mints a client secret carrying that
+  incident's instructions (the API key never reaches a browser) and takes back the decision and
+  the transcript, resuming the graph with the same result shape a phone call produces.
+  `frontend/src/lib/browserCall.ts` is the client half.
+- **The team**, signed in with `ADMIN_PASSWORD` (`agent/auth.py`, one shared password, a signed
+  token good for twelve hours), gets the phone path exactly as before, and is the only audience
+  that can place a call again after one goes unanswered.
+
+Two things bound a public conversation, because it is billed to our OpenAI key: one per incident,
+enforced by the backend, and a ceiling of `PUBLIC_CALL_SECONDS` (180) enforced by the browser. A
+detection can still be run again, which opens a new incident and is free of telephony either way.
+
+The browser path repeats the phone path's guard rather than trusting the page: a confirmation is
+only recorded if the authority actually spoke. Both halves check it, because anyone can post to
+the result endpoint, and because the model does record decisions prematurely. It did exactly that
+on the first live browser test, and was refused.
+
 **Intake: employee and location.** The on-duty employee is picked from a dropdown of the four
-team members (`frontend/src/lib/employees.ts`, names and mobiles). Their mobile is the employee's
-identifier on the report and the number the dispatch call rings, replacing the agency's configured
-number for that incident (`call_phone` in the graph state, applied in `determine_authority_node`).
-Under the dropdown is a greyed one-time number field whose placeholder is the number that will
-ring; a Saudi mobile typed there is used for the next run instead and then cleared. The backend
-still requires a Saudi mobile and a known location, validated in `agent/intake.py`, which is the
-gate; the frontend copy in `lib/intake.ts` only lets the form explain itself early. The four
-mobiles are in the public JavaScript bundle.
+team members and sent as a key (`khalid`, `yazeed`, ...). `agent/employees.py` turns that into the
+name and staff number the report carries, and, for a signed-in dashboard only, into the mobile the
+call rings (`call_phone` in the graph state, applied in `determine_authority_node`). No phone
+number is accepted from the caller any more and none is in the bundle: the dashboard cannot make
+this deployment ring an arbitrary number even if someone forges a request. The checkpoint is still
+validated in `agent/intake.py`, which is the gate; the frontend copy in `lib/intake.ts` only lets
+the form explain itself early.
 
 **Checkpoints and their scenarios.** `agent/checkpoints.py` defines the six locations: the private
 aviation terminal, LEAP 2026, the Future Investment Initiative, the Saudi Falcons and Hunting
@@ -318,6 +343,12 @@ detection, so the report and the call carry that event's scenario; the dashboard
 switches to it too. The Manual entry tab keeps the typed name, ID number and notes, and leaves the
 location alone. `lib/pass.ts` accepts English keys or the Arabic labels. Passes on Raqeeb's own
 domain are fetched from whichever deployment scans them, so the same code works locally.
+
+Most people trying the site have no pass to hold up, so the step opens with two buttons rather
+than a camera: "شغّل الكاميرا" starts it, and "بطاقة تجريبية" loads the published demo pass for
+the chosen event through the same parser a scan uses. A visitor is never asked for the camera
+until they ask for it, which is where people abandon a public page. Signed in, the camera starts
+by itself (`autoStart={admin}`), so our own demos still scan with nothing to press.
 
 **The pass chooser, https://raqeeb.khalid-ai.dev/passes.** One demo pass per checkpoint, each a JSON
 file and a QR code under `public/passes/`, and a page listing the scenarios that shows the chosen
@@ -514,11 +545,16 @@ project setup. Do not copy the local value into the Modal secret.
 run places a real call billed per minute by both OpenAI Realtime and Twilio. Anyone who finds
 the link can do this.
 
-**Live telephony is on, and the public site can ring any Saudi mobile.** The one-time number
-typed into the dashboard is dialled by the voice agent, and so is any number sent to the API. Validation limits it to Saudi mobiles, but anyone
-who finds the site can make it call someone else, on Yazeed's Twilio account. This is no longer
-hypothetical. Gate it (an allowlist of the team's numbers, or a demo passcode), or switch the
-Modal secret back to `TELEPHONY_PROVIDER=mock` when nobody is testing.
+**A public run costs OpenAI minutes.** Nobody can make this deployment phone anyone any more:
+the API takes an employee key rather than a number, and only a signed-in request reaches Twilio at
+all. What a visitor can still spend is OpenAI: the report, and one realtime conversation per
+incident of up to three minutes. Enough runs would add up. If that ever matters, cap it by the day
+in `agent/routes/browser_call.py`, beside the per-incident limit.
+
+**The team's mobiles are still in the git history.** They were committed in
+`frontend/src/lib/employees.ts` before the split, and now live only in `ADMIN_CALL_NUMBERS`.
+Nothing serves them, but `git log -p` still holds them and the repository is public. Only a
+history rewrite removes them, which changes every commit hash and makes everyone re-clone.
 
 **Deploy the backend before the frontend.** When the dashboard and API change together, a
 dashboard that reaches Vercel first talks to the old backend. The last time, the new dashboard
@@ -530,12 +566,11 @@ Twilio token charge Yazeed's account, and the OpenAI key bills the project. Move
 machines privately (USB or an encrypted note), never through chat or email, and never commit it;
 `.env` is gitignored and must stay that way.
 
-**A failed dispatch call shows up as "Failed to fetch".** `twilio_outbound_call_node` does not
-catch Twilio errors, so the exception escapes the graph and the manual-info request returns 500.
-Starlette sends that 500 from outside the CORS middleware, without CORS headers, so the browser
-throws the response away and the dashboard shows only `TypeError: Failed to fetch`. The real
-reason is in `uv run modal app logs raqeeb`. The incident is also left stuck partway through,
-the same class of bug `send_report` had before it learned to return `False`.
+**A call Twilio refuses to place used to show as "Failed to fetch".** Fixed in `bfed3b6` and
+`204c385`: `twilio_outbound_call_node` catches the error, records outcome `failed` with Twilio's
+message and code, and holds the incident for a retry, and `ReadableServerErrors` keeps any 500
+readable across CORS. The error code is what says which fix applies, so read the
+`[telephony INC-...]` line in `uv run modal app logs raqeeb`, and see `twilio_doctor.py`.
 
 **The Modal CLI can be logged in to the wrong workspace.** Production lives in
 `khaliddosari2014`. A machine logged in to another workspace (Khalid's also has `swager2014`)
@@ -613,20 +648,20 @@ Hosting is Modal for the backend, Vercel for the frontend, and Cloudflare for DN
 
 ## Future work
 
-**Gate caller-supplied numbers. Do this first.** Live telephony is already on in production,
-so anyone with the link can make the system phone any Saudi mobile (see Traps).
+**Set `ADMIN_PASSWORD` and `ADMIN_CALL_NUMBERS` on the Modal secret before the next deploy. Do
+this first.** Without the password nobody can sign in, so the deployment is public only: safe, but
+with no way to demo the phone call. Without the numbers a signed-in run is refused with a 422
+naming the setting. Locally both live in `.env`.
 
 **Confirm a live call end to end.** With the webhook fix deployed, run one incident on
 https://raqeeb.khalid-ai.dev with a team member's mobile, and watch `uv run modal app logs raqeeb`
 for `POST /api/openai/webhook -> 200` while it rings. If Twilio refuses to dial again, check the
 Saudi high-risk category in the geo permissions (see Where the project is).
 
-**Handle a dispatch call Twilio refuses to place.** Calls that connect to no one are handled (see
-A call that reaches no one). What remains is an error from Twilio while placing the call: catch it
-in `twilio_outbound_call_node` and record it as outcome `failed`, so the operator gets the retry
-button instead of "Failed to fetch" (see Traps). After deploying the unanswered-call change, test
-it live twice: once answered, to confirm the added pause is acceptable, and once declined, to
-confirm the dashboard offers the retry. If the call connects but the agent stays silent,
+**Test the phone path live again once Twilio unblocks the number.** Calls that reach no one, and
+calls Twilio refuses to place, are both handled now. What has not been rerun since is a full
+signed-in call: once answered, and once declined, to confirm the dashboard offers the retry. If
+the call connects but the agent stays silent,
 the webhook is the first suspect: check that OpenAI shows a delivery to the Modal URL, and that
 the webhook, key and project id all come from the same OpenAI project.
 

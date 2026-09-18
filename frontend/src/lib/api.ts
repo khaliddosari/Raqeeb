@@ -1,5 +1,8 @@
 // Same-origin by default so FastAPI can serve the built bundle; set VITE_API_BASE_URL
 // when the frontend is deployed separately (Vercel) from the backend (Modal).
+import { adminHeaders } from "@/lib/admin"
+import type { Employee } from "@/lib/employees"
+
 export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "")
 
 export type Incident = {
@@ -18,7 +21,6 @@ export type Incident = {
   authority_name: string | null
   authority_name_ar: string | null
   authority_agency: string | null
-  authority_phone: string | null
   call_sid: string | null
   authority_response: {
     dispatch_confirmed?: boolean
@@ -47,19 +49,66 @@ async function json<T>(res: Response): Promise<T> {
 
 export const uploadsUrl = (filename: string) => `${API_BASE}/uploads/${filename}`
 
-export async function detect(file: File, employeeName: string, employeePhone: string | null, location: string) {
+// The employee is named by key; no phone number is sent. Signed in, the backend rings the mobile
+// it has configured for that person, and otherwise the dispatch conversation happens in this
+// browser (see lib/browserCall.ts).
+export async function detect(file: File, employeeKey: string, location: string) {
   const form = new FormData()
   form.append("image", file)
-  form.append("employee_name", employeeName)
-  // normalized to E.164 by the caller; the backend validates it again and dials it
-  if (employeePhone) form.append("employee_phone", employeePhone)
+  form.append("employee_key", employeeKey)
   form.append("location", location)
   return json<{
     incident_id: string
     interrupt: Record<string, any>
     image_filename: string | null
     annotated_filename: string | null
-  }>(await fetch(`${API_BASE}/api/detect`, { method: "POST", body: form }))
+  }>(await fetch(`${API_BASE}/api/detect`, { method: "POST", body: form, headers: adminHeaders() }))
+}
+
+export async function getEmployees() {
+  return json<{ employees: Employee[] }>(await fetch(`${API_BASE}/api/employees`, { headers: adminHeaders() }))
+}
+
+export async function signIn(password: string) {
+  const response = await fetch(`${API_BASE}/api/admin/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  })
+  if (response.status === 401) return null
+  return json<{ token: string; expires_at: number }>(response)
+}
+
+/** Whether the stored token still works, and whether this deployment has an admin at all. */
+export async function adminSession() {
+  return json<{ admin: boolean; available: boolean }>(
+    await fetch(`${API_BASE}/api/admin/session`, { headers: adminHeaders() }),
+  )
+}
+
+/** A client secret for this incident's browser conversation, and its ceiling in seconds. */
+export async function browserCallToken(id: string) {
+  return json<{ client_secret: string; expires_at: number | null; max_seconds: number }>(
+    await fetch(`${API_BASE}/api/incidents/${id}/browser-call/token`, { method: "POST" }),
+  )
+}
+
+export async function browserCallResult(
+  id: string,
+  result: {
+    outcome: "answered" | "failed"
+    dispatch_confirmed?: boolean
+    authority_statement?: string
+    transcript?: { role: string; text: string }[]
+  },
+) {
+  return json<{ dispatch_confirmed: boolean }>(
+    await fetch(`${API_BASE}/api/incidents/${id}/browser-call/result`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(result),
+    }),
+  )
 }
 
 export async function getIncident(id: string) {
@@ -87,9 +136,9 @@ export async function submitInfo(id: string, suspectName: string, suspectId: str
   )
 }
 
-// After a call that reached no one, places the dispatch call again.
+// After a call that reached no one, places the dispatch call again. The team's to do.
 export async function callAgain(id: string) {
-  return json<any>(await fetch(`${API_BASE}/api/incidents/${id}/call-again`, { method: "POST" }))
+  return json<any>(await fetch(`${API_BASE}/api/incidents/${id}/call-again`, { method: "POST", headers: adminHeaders() }))
 }
 
 export function monitorSocket(id: string): WebSocket {

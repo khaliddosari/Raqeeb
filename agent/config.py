@@ -53,6 +53,22 @@ class Settings(BaseSettings):
     signalwire_space_url: str = ""
     signalwire_phone_number: str = ""
 
+    # --- Who may spend money ---
+    # The dashboard is public and runs its dispatch conversation in the visitor's own browser,
+    # billed to OPENAI_API_KEY alone. Placing a real phone call, and the employee mobiles it
+    # would ring, sit behind this one shared password (see agent/auth.py). Unset means nobody
+    # can sign in and the deployment is public-only.
+    admin_password: str = ""
+    # Signing key for admin session tokens. Defaults to the password, so setting the password
+    # alone is enough; set this too to invalidate every session without changing the password.
+    admin_session_secret: str = ""
+    # The mobiles the dispatch call may ring, as "khalid=+9665XXXXXXXX,yazeed=+9665XXXXXXXX".
+    # Deliberately not in the repository or the dashboard bundle (see agent/employees.py).
+    admin_call_numbers: str = ""
+    # Ceiling on one public browser conversation, in seconds. Only an abandoned or abused
+    # session ever reaches it: a real dispatch call is well under a minute.
+    public_call_seconds: int = 180
+
     # Public base URL this server is reachable at (needed so Twilio can call back into
     # our webhook / media-stream websocket). e.g. https://your-ngrok-domain.ngrok.io
     public_base_url: str = "http://localhost:8000"

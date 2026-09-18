@@ -11,7 +11,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from agent.config import settings, validate_settings
 from agent.db import init_db
-from agent.routes import detection, monitor_ws, openai_routes, twilio_routes, verification, voice_ws
+from agent.routes import admin, browser_call, detection, monitor_ws, openai_routes, twilio_routes, verification, voice_ws
 
 
 class ReadableServerErrors:
@@ -70,6 +70,8 @@ app = FastAPI(title="Raqeeb Voice Agent", lifespan=lifespan)
 # through CORS to be readable by a dashboard on another origin.
 app.add_middleware(ReadableServerErrors)
 
+app.include_router(admin.router)
+app.include_router(browser_call.router)
 app.include_router(detection.router)
 app.include_router(verification.router)
 app.include_router(voice_ws.router)

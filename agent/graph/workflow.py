@@ -136,6 +136,11 @@ async def send_report_node(state: IncidentState) -> dict[str, Any]:
 
 
 async def twilio_outbound_call_node(state: IncidentState) -> dict[str, Any]:
+    if state.get("call_transport") == "browser":
+        # The public dashboard holds this conversation in the visitor's own browser, so there
+        # is no telephony leg to place and nothing to bill outside OpenAI. The graph still
+        # pauses at the same interrupt below, and browser_call.py resumes it the same way.
+        return {"call_sid": None, "status": "call_in_progress"}
     telephony = get_telephony_provider()
     authority = AuthorityConfig(**state["authority"])
     try:

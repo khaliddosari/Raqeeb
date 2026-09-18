@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from agent import monitor
+from agent.auth import admin_required
 from agent.graph.runner import call_again, resume_incident
 from agent.intake import validate_location
 from agent.schemas import ManualSuspectInfoInput, VerificationInput
@@ -39,7 +40,7 @@ async def submit_manual_info(incident_id: str, info: ManualSuspectInfoInput):
     return {"incident_id": incident_id, "interrupt": result["interrupt"], "status": result["state"].get("status")}
 
 
-@router.post("/incidents/{incident_id}/call-again")
+@router.post("/incidents/{incident_id}/call-again", dependencies=[Depends(admin_required)])
 async def call_authority_again(incident_id: str):
     """Places the dispatch call again after nobody answered: a voicemail, a missed call, a busy line."""
     result = await call_again(incident_id)

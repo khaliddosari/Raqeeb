@@ -19,6 +19,7 @@ from twilio.request_validator import RequestValidator
 
 import agent.graph.workflow as workflow_module
 import agent.voice.sip_authority_call as sip_module
+from agent.auth import issue_token
 from agent.config import settings
 from agent.db import init_db
 from agent.graph.runner import get_incident_snapshot, resume_incident, start_incident
@@ -58,8 +59,10 @@ async def _twilio_post(url: str, form: dict[str, str], *, sign: bool = True) -> 
 
 
 async def _post(path: str) -> httpx.Response:
+    """Placing the call again is the team's to do, so these requests are signed in."""
+    token, _ = issue_token()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
-        return await client.post(path)
+        return await client.post(path, headers={"Authorization": f"Bearer {token}"})
 
 
 @pytest.mark.asyncio

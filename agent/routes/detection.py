@@ -2,15 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, Form, Header, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from agent.auth import is_admin
 from agent.config import settings
 from agent.db import get_db
 from agent.authority_mapping import get_authority_for_class
+from agent.employees import BY_KEY, EMPLOYEES, call_numbers
 from agent.graph.runner import start_incident
-from agent.intake import normalize_saudi_mobile, validate_location
+from agent.intake import validate_location
 from agent.models import Incident
 from agent.report import new_incident_id
 from agent.yolo_detector import NoDetectionError, YoloDetector
@@ -21,28 +23,33 @@ router = APIRouter(prefix="/api", tags=["detection"])
 @router.post("/detect")
 async def detect(
     image: UploadFile,
-    employee_name: str = Form(...),
-    employee_id: str = Form(""),
-    employee_phone: str = Form(""),
+    employee_key: str = Form(""),
     location: str = Form(""),
+    authorization: str | None = Header(default=None),
 ):
     """YOLO detection entrypoint. Saves the frame, runs the graph up to (and including)
     the employee_verification interrupt, and returns the detection for the dashboard.
 
-    employee_phone is the on-duty employee's Saudi mobile: the dispatch call is placed to it
-    instead of the authority's configured number, and it doubles as the employee's identifier
-    on the report. One of employee_phone or employee_id is required, because the report
-    cannot be generated without an employee identifier. location picks one of the fixed
+    employee_key names one of agent/employees.py; their name and staff number go on the report.
+    No phone number is accepted from the caller: signed in as the team, the dispatch call rings
+    the mobile configured for that employee in ADMIN_CALL_NUMBERS, and otherwise the incident
+    holds its dispatch conversation in the visitor's own browser. location picks one of the fixed
     checkpoints; without it the configured default is used."""
+    employee = BY_KEY.get(employee_key.strip()) or (EMPLOYEES[0] if not employee_key.strip() else None)
+    if employee is None:
+        raise HTTPException(status_code=422, detail="Unknown employee.")
     try:
-        call_phone = normalize_saudi_mobile(employee_phone) if employee_phone.strip() else None
         checkpoint = validate_location(location) if location else None
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    if not call_phone and not employee_id.strip():
-        # Without it the graph would wait at information collection forever, since employee_id
-        # is a required report field and nothing later in the flow asks for it.
-        raise HTTPException(status_code=422, detail="Enter the employee's Saudi mobile number.")
+
+    call_phone = call_numbers().get(employee.key) if is_admin(authorization) else None
+    if is_admin(authorization) and not call_phone:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No number is configured for {employee.name_en} in ADMIN_CALL_NUMBERS. "
+            "Add one, or sign out to hold the dispatch conversation in this browser instead.",
+        )
 
     incident_id = new_incident_id()
     upload_dir = Path(settings.upload_dir)
@@ -55,10 +62,11 @@ async def detect(
         result = await start_incident(
             incident_id,
             str(image_path),
-            employee_name=employee_name,
-            employee_id=employee_id or call_phone or "",
+            employee_name=employee.name_ar,
+            employee_id=employee.badge,
             location=checkpoint,
             call_phone=call_phone,
+            call_transport="phone" if call_phone else "browser",
         )
     except NoDetectionError:
         raise HTTPException(status_code=422, detail="No prohibited item detected in this frame.")
@@ -121,7 +129,8 @@ def _serialize(incident: Incident) -> dict:
         # soon as the item is detected. Read from the mapping, which is the routing source of truth.
         "authority_agency": mapped.agency if mapped else None,
         "authority_name_ar": mapped.name_ar if mapped and incident.authority_name else None,
-        "authority_phone": incident.authority_phone,
+        # authority_phone is deliberately absent: this endpoint is public, and the number is a
+        # real mobile. The dashboard never showed it, and the record still holds it.
         "call_sid": incident.call_sid,
         "authority_response": incident.authority_response,
         "created_at": incident.created_at.isoformat(),

@@ -32,5 +32,10 @@ class IncidentState(TypedDict, total=False):
     # the authority's configured number.
     call_phone: str
 
+    # "phone": the telephony provider dials call_phone (the team's own dashboard).
+    # "browser": the visitor holds the conversation in their own browser over WebRTC, and
+    # agent/routes/browser_call.py resumes the same interrupt with the same result shape.
+    call_transport: str
+
     call_sid: str
     authority_response: dict[str, Any]

@@ -1,6 +1,7 @@
 import { DirectionProvider } from "@base-ui/react/direction-provider"
 import {
   BadgeCheck,
+  IdCard,
   Keyboard,
   MapPin,
   Pause as PauseIcon,
@@ -12,7 +13,9 @@ import {
   UserRound,
 } from "lucide-react"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AdminSignIn } from "@/components/AdminSignIn"
 import { AgencyMark } from "@/components/AgencyMark"
+import { BrowserCallBar } from "@/components/BrowserCallBar"
 import { CallTranscript, type TranscriptLine } from "@/components/CallTranscript"
 import {
   CallIllustration,
@@ -35,8 +38,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
+  adminSession,
   callAgain,
   detect,
+  getEmployees,
   getIncident,
   monitorSocket,
   submitInfo,
@@ -45,11 +50,12 @@ import {
   type Incident,
   type MonitorEvent,
 } from "@/lib/api"
+import { adminToken, rememberAdmin } from "@/lib/admin"
 import { isAgency } from "@/lib/agency"
 import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
-import { CHECKPOINT_LOCATIONS, normalizeSaudiMobile, type CheckpointLocation } from "@/lib/intake"
-import { EMPLOYEES, employeeById } from "@/lib/employees"
-import type { SuspectPass } from "@/lib/pass"
+import { CHECKPOINT_LOCATIONS, PASS_SLUGS, type CheckpointLocation } from "@/lib/intake"
+import { employeeByKey, employeeName, type Employee } from "@/lib/employees"
+import { readSuspectPass, type SuspectPass } from "@/lib/pass"
 import { toPlainText } from "@/lib/plaintext"
 import { cn } from "@/lib/utils"
 
@@ -157,10 +163,12 @@ function RecordItem({
 export default function App() {
   const [lang, setLang] = useState<Lang>(initialLang)
   const t = STRINGS[lang]
-  // The on-duty employee, picked from the team. Their mobile takes the dispatch call, unless a
-  // one-time number is typed, which is used for the next run and then cleared.
-  const [employeeId, setEmployeeId] = useState(EMPLOYEES[0].id)
-  const [oneTimePhone, setOneTimePhone] = useState("")
+  // The on-duty employee, named by key. No phone number is held here or sent: signed in as the
+  // team the server rings the mobile it has for them, and otherwise the dispatch conversation
+  // happens in this browser (see components/BrowserCallBar.tsx).
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [employeeKey, setEmployeeKey] = useState("")
+  const [admin, setAdmin] = useState(false)
   const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
   // Suspect details come from the pass the bag carrier shows, or are typed. A scanned pass also
   // names its event, which becomes the incident's location.
@@ -170,6 +178,17 @@ export default function App() {
     setSuspectPass(scanned)
     setLocation(scanned.location)
   }, [])
+  // Most people trying this out have no pass to hold up to a camera. This reads the published
+  // demo pass for the checkpoint they picked, through the same parser a scan goes through.
+  const [demoPassFailed, setDemoPassFailed] = useState(false)
+  const useDemoPass = async () => {
+    setBusy("pass")
+    setDemoPassFailed(false)
+    const result = await readSuspectPass(`${window.location.origin}/passes/${PASS_SLUGS[location]}.json`)
+    if (result.ok) applySuspectPass(result.pass)
+    else setDemoPassFailed(true)
+    setBusy(null)
+  }
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [annotated, setAnnotated] = useState<string | null>(null)
@@ -182,9 +201,35 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [playing, setPlaying] = useState(true)
+  // lines of a conversation held in this browser, which has no monitor socket behind it
+  const [browserLines, setBrowserLines] = useState<TranscriptLine[]>([])
   const [suspectName, setSuspectName] = useState(PREFILL.suspectName)
   const [suspectId, setSuspectId] = useState(PREFILL.suspectId)
   const [suspectNotes, setSuspectNotes] = useState(PREFILL.notes)
+
+  // Who is signed in, and the roster the picker offers. Both come from the server: a signed-in
+  // dashboard also learns which people it could actually phone.
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      try {
+        const session = await adminSession()
+        if (cancelled) return
+        if (!session.admin && adminToken()) rememberAdmin(null) // a token the server no longer honours
+        setAdmin(session.admin)
+        const roster = await getEmployees()
+        if (cancelled) return
+        setEmployees(roster.employees)
+        setEmployeeKey((current) => current || roster.employees[0]?.key || "")
+      } catch {
+        // the API is unreachable; the run buttons stay disabled and say so on the first attempt
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [admin])
 
   useEffect(() => {
     applyDocumentLang(lang)
@@ -233,12 +278,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incident?.id])
 
-  const employee = employeeById(employeeId)
-  const oneTimeTyped = oneTimePhone.trim() !== ""
-  const oneTimeInvalid = oneTimeTyped && normalizeSaudiMobile(oneTimePhone) === null
-  // the number the dispatch call rings for the next run
-  const callPhone = normalizeSaudiMobile(oneTimeTyped ? oneTimePhone : employee.phone)
-  const detailsReady = callPhone !== null
+  const employee = employeeByKey(employees, employeeKey)
+  const detailsReady = employee !== null
 
   const onFile = (f: File | null) => {
     setFile(f)
@@ -256,9 +297,10 @@ export default function App() {
     setSuspectNotes(PREFILL.notes)
     setSuspectMode("qr")
     setSuspectPass(null)
+    setBrowserLines([])
+    setDemoPassFailed(false)
     try {
-      const res = await detect(file, employee.name.ar, callPhone, location)
-      setOneTimePhone("")
+      const res = await detect(file, employeeKey, location)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -277,14 +319,15 @@ export default function App() {
     setSuspectNotes(PREFILL.notes)
     setSuspectMode("qr")
     setSuspectPass(null)
+    setBrowserLines([])
+    setDemoPassFailed(false)
     try {
       const blob = await (await fetch(TEST_IMAGE_URL)).blob()
       const testFile = new File([blob], "test-image.png", { type: blob.type || "image/png" })
       setFile(testFile)
       setPreviewUrl(TEST_IMAGE_URL)
       setAnnotated(null)
-      const res = await detect(testFile, employee.name.ar, callPhone, location)
-      setOneTimePhone("")
+      const res = await detect(testFile, employeeKey, location)
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -338,13 +381,14 @@ export default function App() {
     }
     const live = [...keyed.values(), ...loose].sort((a, b) => a.seq - b.seq)
     if (live.length) return live
+    if (browserLines.length) return browserLines
     return (incident?.authority_response?.raw_transcript ?? []).map((line, i) => ({
       ...line,
       final: true,
       seq: i,
       animate: false,
     }))
-  }, [feed, incident])
+  }, [feed, incident, browserLines])
 
   const dispatch = incident?.authority_response
   const report = incident?.report
@@ -373,8 +417,8 @@ export default function App() {
   const unanswered = incident?.status === "call_unanswered"
   const callStatus: { label: string; tone: Tone } = unanswered
     ? { label: t.call.unanswered, tone: "malfunction" }
-    : incident?.call_sid
-      ? ["closed", "closed_unconfirmed"].includes(incident.status)
+    : incident?.call_sid || browserLines.length > 0 || ["closed", "closed_unconfirmed"].includes(incident?.status ?? "")
+      ? ["closed", "closed_unconfirmed"].includes(incident?.status ?? "")
         ? { label: t.call.ended, tone: "done" }
         : { label: t.call.inProgress, tone: "running" }
       : { label: t.call.noCall, tone: "idle" }
@@ -434,6 +478,18 @@ export default function App() {
               >
                 <span lang={t.switchToLang}>{t.switchTo}</span>
               </Button>
+              <AdminSignIn
+                admin={admin}
+                labels={t.admin}
+                onSignedIn={(token) => {
+                  rememberAdmin(token)
+                  setAdmin(true)
+                }}
+                onSignOut={() => {
+                  rememberAdmin(null)
+                  setAdmin(false)
+                }}
+              />
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="font-mono tabular-nums">{RIYADH_TIME.format(clock)}</span>
                 <span>{t.timeZone}</span>
@@ -510,7 +566,7 @@ export default function App() {
                 <div className="flex flex-col gap-3 desk:gap-2 desk:p-1 desk:pe-3 desk-short:gap-1.5">
                   <div className="grid gap-1.5 desk:gap-1">
                     <Label id="employee-label">{t.inference.employee}</Label>
-                    <Select value={employeeId} onValueChange={(v) => v && setEmployeeId(v)}>
+                    <Select value={employeeKey} onValueChange={(v) => v && setEmployeeKey(v)}>
                       <SelectTrigger
                         aria-labelledby="employee-label"
                         className="w-full data-[size=default]:h-11 desk:data-[size=default]:h-8"
@@ -519,54 +575,26 @@ export default function App() {
                           {(value: string) => (
                             <>
                               <UserRound aria-hidden="true" className="size-3.5 text-primary" />
-                              <bdi>{employeeById(value).name[lang]}</bdi>
+                              <bdi>{employeeByKey(employees, value)?.[lang === "ar" ? "name_ar" : "name_en"] ?? ""}</bdi>
                             </>
                           )}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {EMPLOYEES.map((person) => (
+                        {employees.map((person) => (
                           <SelectItem
-                            key={person.id}
-                            value={person.id}
+                            key={person.key}
+                            value={person.key}
                             className="min-h-10 desk:min-h-0 [&>div:first-child]:justify-between [&>div:first-child]:gap-4"
                           >
-                            <bdi>{person.name[lang]}</bdi>
+                            <bdi>{employeeName(person, lang)}</bdi>
                             <span dir="ltr" className="font-mono text-xs tabular-nums text-muted-foreground">
-                              {person.phone}
+                              {person.badge}
                             </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  {/* Greyed until something is typed: the placeholder is the number that will ring. */}
-                  <div className="grid gap-1.5 desk:gap-1">
-                    <Label htmlFor="one-time-phone" className="desk-short:sr-only">
-                      {t.inference.oneTimeNumber}
-                    </Label>
-                    <Input
-                      id="one-time-phone"
-                      type="tel"
-                      inputMode="tel"
-                      autoComplete="off"
-                      dir="ltr"
-                      value={oneTimePhone}
-                      onChange={(e) => setOneTimePhone(e.target.value)}
-                      placeholder={employee.phone}
-                      aria-invalid={oneTimeInvalid || undefined}
-                      aria-describedby="one-time-phone-help"
-                      className={cn(
-                        "h-11 text-center font-mono tabular-nums desk:h-8",
-                        !oneTimeTyped && "border-transparent bg-muted text-muted-foreground",
-                      )}
-                    />
-                    <p
-                      id="one-time-phone-help"
-                      className={oneTimeInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground desk:sr-only"}
-                    >
-                      {oneTimeInvalid ? t.inference.employeeNumberInvalid : t.inference.oneTimeHelp}
-                    </p>
                   </div>
                   <div className="grid gap-1.5 desk:gap-1">
                     <Label id="location-label" className="desk-short:sr-only">{t.inference.location}</Label>
@@ -763,7 +791,7 @@ export default function App() {
                         )
                       }}
                     >
-                      <div className="desk-tight:sr-only">
+                      <div className="desk-short:sr-only">
                         <h3 className="text-sm font-semibold">{t.inference.suspectDetails}</h3>
                         <p className="mt-0.5 text-xs text-muted-foreground desk-short:sr-only">{t.inference.suspectHelp}</p>
                       </div>
@@ -836,6 +864,7 @@ export default function App() {
                               >
                                 <PassScanner
                                   onPass={applySuspectPass}
+                                  autoStart={admin}
                                   labels={{
                                     preview: t.inference.scanPreview,
                                     starting: t.inference.scanStarting,
@@ -846,10 +875,27 @@ export default function App() {
                                     invalid: t.inference.scanInvalid,
                                     unreachable: t.inference.scanUnreachable,
                                     retry: t.inference.scanRetry,
+                                    turnOn: t.inference.scanTurnOn,
+                                    offHint: t.inference.scanOffHint,
                                   }}
+                                  action={
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      onClick={useDemoPass}
+                                      disabled={busy !== null}
+                                      className="h-11 w-full text-sm desk:h-8"
+                                    >
+                                      <IdCard aria-hidden="true" />
+                                      {busy === "pass" ? t.inference.demoPassLoading : t.inference.demoPass}
+                                    </Button>
+                                  }
                                 />
                               </Suspense>
                             ))}
+                          {!suspectPass && demoPassFailed && (
+                            <p className="mt-1 text-xs text-destructive">{t.inference.demoPassFailed}</p>
+                          )}
                         </TabsContent>
                         <TabsContent
                           value="manual"
@@ -1071,7 +1117,16 @@ export default function App() {
               <Placeholder
                 art={<CallIllustration className="h-24 w-auto desk:h-20" />}
                 title={t.call.emptyTitle}
-                body={t.call.empty}
+                body={admin ? t.call.empty : t.call.publicEmpty}
+              />
+            )}
+            {/* Not signed in, the dispatch conversation happens here rather than over a phone. */}
+            {!admin && incident?.status === "call_in_progress" && (
+              <BrowserCallBar
+                incidentId={incident.id}
+                labels={t.browserCall}
+                onLines={setBrowserLines}
+                onFinished={() => void refresh(incident.id)}
               />
             )}
           </SectionShell>

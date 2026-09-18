@@ -1,16 +1,20 @@
-// The on-duty employees a demo can pick: the team. The dispatch call rings the chosen person's
-// mobile unless a one-time number is typed for a single run. The name goes to the backend in
-// Arabic in both interface languages, like everything else that reaches the call.
+// The on-duty employees the picker offers, as the backend lists them.
+//
+// Deliberately no phone numbers: this bundle is public. The mobile the dispatch call rings is
+// configured on the server (ADMIN_CALL_NUMBERS) and never sent here, not even to a signed-in
+// dashboard, which only learns whether a number exists at all.
 
-import type { Lang } from "@/lib/i18n"
+export type Employee = {
+  key: string
+  name_ar: string
+  name_en: string
+  badge: string
+  /** only present for a signed-in dashboard: whether this person can be phoned at all */
+  has_number?: boolean
+}
 
-export type Employee = { id: string; name: Record<Lang, string>; phone: string }
+export const employeeName = (employee: Employee, lang: "en" | "ar") =>
+  lang === "ar" ? employee.name_ar : employee.name_en
 
-export const EMPLOYEES: readonly Employee[] = [
-  { id: "khalid", name: { en: "Khalid Al Dosari", ar: "خالد آل دوسري" }, phone: "0553225155" },
-  { id: "yazeed", name: { en: "Yazeed Bin Shihah", ar: "يزيد بن شيحة" }, phone: "0554626773" },
-  { id: "nawaf", name: { en: "Nawaf Alsharani", ar: "نواف الشهراني" }, phone: "0540448590" },
-  { id: "omar", name: { en: "Omar Al-Dhawyan", ar: "عمر الضويان" }, phone: "0565448517" },
-]
-
-export const employeeById = (id: string): Employee => EMPLOYEES.find((employee) => employee.id === id) ?? EMPLOYEES[0]
+export const employeeByKey = (employees: readonly Employee[], key: string): Employee | null =>
+  employees.find((employee) => employee.key === key) ?? employees[0] ?? null

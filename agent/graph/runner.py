@@ -87,13 +87,15 @@ async def start_incident(
     employee_id: str,
     location: str | None = None,
     call_phone: str | None = None,
+    call_transport: str = "phone",
 ) -> dict[str, Any]:
     """The on-duty employee (from their shift login) and the checkpoint's location are
     stamped onto the incident right here, before detection even runs -- the employee
     only ever fills in the suspect's details, never re-types who or where they are.
 
     location falls back to the configured checkpoint. call_phone, already validated and in
-    E.164, replaces the authority's number as the destination of the dispatch call."""
+    E.164, replaces the authority's number as the destination of the dispatch call.
+    call_transport "browser" holds that conversation in the dashboard instead of placing one."""
     config = thread_config(incident_id)
     initial_state = {
         "incident_id": incident_id,
@@ -106,6 +108,7 @@ async def start_incident(
             "employee_id": employee_id,
         },
     }
+    initial_state["call_transport"] = call_transport
     if call_phone:
         initial_state["call_phone"] = call_phone
     result = await (await get_compiled_graph()).ainvoke(initial_state, config)

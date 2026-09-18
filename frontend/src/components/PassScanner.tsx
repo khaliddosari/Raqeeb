@@ -1,3 +1,4 @@
+import { Camera } from "lucide-react"
 import jsQR from "jsqr"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -5,6 +6,8 @@ import { readSuspectPass, type SuspectPass } from "@/lib/pass"
 import { cn } from "@/lib/utils"
 
 type Labels = {
+  turnOn: string
+  offHint: string
   preview: string
   starting: string
   prompt: string
@@ -16,7 +19,7 @@ type Labels = {
   retry: string
 }
 
-type Status = "starting" | "scanning" | "reading" | "denied" | "unavailable"
+type Status = "off" | "starting" | "scanning" | "reading" | "denied" | "unavailable"
 
 type BarcodeDetectorLike = { detect: (source: CanvasImageSource) => Promise<{ rawValue: string }[]> }
 
@@ -27,10 +30,26 @@ const FRAME_WIDTH = 640
 // screen and stops the moment a valid pass is read or the component unmounts. Decoding uses the
 // browser's BarcodeDetector where it exists (Chrome on macOS and Android) and jsQR elsewhere,
 // which includes Chrome on Windows.
-export function PassScanner({ onPass, labels }: { onPass: (pass: SuspectPass) => void; labels: Labels }) {
+//
+// autoStart is for our own demos, where the camera should be live the instant the step opens. A
+// visitor gets the viewfinder with a button instead: a permission prompt nobody asked for is where
+// people leave, and most visitors have no pass to hold up anyway.
+export function PassScanner({
+  onPass,
+  labels,
+  autoStart = false,
+  action,
+}: {
+  onPass: (pass: SuspectPass) => void
+  labels: Labels
+  autoStart?: boolean
+  /** an alternative to scanning, shown beside the camera button */
+  action?: React.ReactNode
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const onPassRef = useRef(onPass)
-  const [status, setStatus] = useState<Status>("starting")
+  const [status, setStatus] = useState<Status>(autoStart ? "starting" : "off")
+  const [started, setStarted] = useState(autoStart)
   const [notice, setNotice] = useState<"invalid" | "unreachable" | null>(null)
   const [mirrored, setMirrored] = useState(true)
   const [attempt, setAttempt] = useState(0)
@@ -40,6 +59,7 @@ export function PassScanner({ onPass, labels }: { onPass: (pass: SuspectPass) =>
   }, [onPass])
 
   useEffect(() => {
+    if (!started) return
     let cancelled = false
     let stream: MediaStream | null = null
     let timer = 0
@@ -127,10 +147,13 @@ export function PassScanner({ onPass, labels }: { onPass: (pass: SuspectPass) =>
       window.clearTimeout(timer)
       stream?.getTracks().forEach((track) => track.stop())
     }
-  }, [attempt])
+  }, [attempt, started])
 
   const blocked = status === "denied" || status === "unavailable"
-  const message = blocked
+  const off = status === "off"
+  const message = off
+    ? labels.offHint
+    : blocked
     ? labels[status]
     : status === "starting"
       ? labels.starting
@@ -139,6 +162,29 @@ export function PassScanner({ onPass, labels }: { onPass: (pass: SuspectPass) =>
         : notice
           ? labels[notice]
           : labels.prompt
+
+  if (off) {
+    return (
+      <div className="flex flex-col gap-2 desk-short:gap-1.5">
+        <div className="grid gap-2 sm:grid-cols-2 sm:gap-2.5 desk-tight:[&_svg]:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              setStarted(true)
+              setStatus("starting")
+            }}
+            className="h-11 w-full gap-1.5 text-sm desk:h-8"
+          >
+            <Camera aria-hidden="true" className="size-4" />
+            {labels.turnOn}
+          </Button>
+          {action}
+        </div>
+        <p className="text-center text-xs text-muted-foreground desk-short:sr-only">{labels.offHint}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -182,6 +228,7 @@ export function PassScanner({ onPass, labels }: { onPass: (pass: SuspectPass) =>
       >
         {message}
       </p>
+      {action}
     </div>
   )
 }
