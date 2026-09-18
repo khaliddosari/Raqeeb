@@ -12,7 +12,7 @@ from agent.db import get_db
 from agent.authority_mapping import get_authority_for_class
 from agent.employees import BY_KEY, EMPLOYEES, call_numbers
 from agent.graph.runner import start_incident
-from agent.intake import validate_location
+from agent.intake import normalize_saudi_mobile, validate_location
 from agent.models import Incident
 from agent.report import new_incident_id
 from agent.yolo_detector import NoDetectionError, YoloDetector
@@ -20,36 +20,57 @@ from agent.yolo_detector import NoDetectionError, YoloDetector
 router = APIRouter(prefix="/api", tags=["detection"])
 
 
+# What a visitor's typed name may be. It reaches the report and the voice agent reads it aloud,
+# so it is capped and kept to one line rather than passed through as free text.
+_NAME_LIMIT = 60
+_PUBLIC_BADGE = "تجريبي"
+_PUBLIC_DEFAULT_NAME = "موظف الفحص"
+
+
 @router.post("/detect")
 async def detect(
     image: UploadFile,
     employee_key: str = Form(""),
+    employee_name: str = Form(""),
+    employee_phone: str = Form(""),
     location: str = Form(""),
     authorization: str | None = Header(default=None),
 ):
     """YOLO detection entrypoint. Saves the frame, runs the graph up to (and including)
     the employee_verification interrupt, and returns the detection for the dashboard.
 
-    employee_key names one of agent/employees.py; their name and staff number go on the report.
-    No phone number is accepted from the caller: signed in as the team, the dispatch call rings
-    the mobile configured for that employee in ADMIN_CALL_NUMBERS, and otherwise the incident
-    holds its dispatch conversation in the visitor's own browser. location picks one of the fixed
+    Two callers, two shapes. A visitor types a name, which goes on the report as-is, and their
+    incident holds its dispatch conversation in their own browser. Signed in as the team,
+    employee_key names one of agent/employees.py and employee_phone is the mobile the dispatch
+    call rings: it defaults to that employee's entry in ADMIN_CALL_NUMBERS and may be edited for
+    one run. A number is only ever read from a signed-in request. location picks one of the fixed
     checkpoints; without it the configured default is used."""
-    employee = BY_KEY.get(employee_key.strip()) or (EMPLOYEES[0] if not employee_key.strip() else None)
-    if employee is None:
-        raise HTTPException(status_code=422, detail="Unknown employee.")
+    admin = is_admin(authorization)
     try:
         checkpoint = validate_location(location) if location else None
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    call_phone = call_numbers().get(employee.key) if is_admin(authorization) else None
-    if is_admin(authorization) and not call_phone:
-        raise HTTPException(
-            status_code=422,
-            detail=f"No number is configured for {employee.name_en} in ADMIN_CALL_NUMBERS. "
-            "Add one, or sign out to hold the dispatch conversation in this browser instead.",
-        )
+    if admin:
+        employee = BY_KEY.get(employee_key.strip()) or (EMPLOYEES[0] if not employee_key.strip() else None)
+        if employee is None:
+            raise HTTPException(status_code=422, detail="Unknown employee.")
+        name, badge = employee.name_ar, employee.badge
+        try:
+            call_phone = normalize_saudi_mobile(employee_phone) if employee_phone.strip() else call_numbers().get(employee.key)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        if not call_phone:
+            raise HTTPException(
+                status_code=422,
+                detail=f"No number is configured for {employee.name_en} in ADMIN_CALL_NUMBERS. "
+                "Type one in the number field, or sign out to hold the dispatch conversation in this browser instead.",
+            )
+    else:
+        # employee_phone is ignored here on purpose: an anonymous request may not choose who gets
+        # phoned, and this incident places no call at all.
+        name = " ".join(employee_name.split())[:_NAME_LIMIT] or _PUBLIC_DEFAULT_NAME
+        badge, call_phone = _PUBLIC_BADGE, None
 
     incident_id = new_incident_id()
     upload_dir = Path(settings.upload_dir)
@@ -62,8 +83,8 @@ async def detect(
         result = await start_incident(
             incident_id,
             str(image_path),
-            employee_name=employee.name_ar,
-            employee_id=employee.badge,
+            employee_name=name,
+            employee_id=badge,
             location=checkpoint,
             call_phone=call_phone,
             call_transport="phone" if call_phone else "browser",

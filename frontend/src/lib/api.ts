@@ -49,14 +49,20 @@ async function json<T>(res: Response): Promise<T> {
 
 export const uploadsUrl = (filename: string) => `${API_BASE}/uploads/${filename}`
 
-// The employee is named by key; no phone number is sent. Signed in, the backend rings the mobile
-// it has configured for that person, and otherwise the dispatch conversation happens in this
-// browser (see lib/browserCall.ts).
-export async function detect(file: File, employeeKey: string, location: string) {
+// Two shapes, matching the two dashboards: a visitor sends the name they typed, and a signed-in
+// dashboard sends the employee it picked and the number to ring. A number sent without a session
+// is ignored by the backend, which is what makes an anonymous run unable to phone anyone.
+export async function detect(
+  file: File,
+  location: string,
+  who: { employeeKey?: string; employeeName?: string; employeePhone?: string },
+) {
   const form = new FormData()
   form.append("image", file)
-  form.append("employee_key", employeeKey)
   form.append("location", location)
+  if (who.employeeKey) form.append("employee_key", who.employeeKey)
+  if (who.employeeName) form.append("employee_name", who.employeeName)
+  if (who.employeePhone) form.append("employee_phone", who.employeePhone)
   return json<{
     incident_id: string
     interrupt: Record<string, any>

@@ -1,16 +1,16 @@
 // The on-duty employees the picker offers, as the backend lists them.
 //
-// Deliberately no phone numbers: this bundle is public. The mobile the dispatch call rings is
-// configured on the server (ADMIN_CALL_NUMBERS) and never sent here, not even to a signed-in
-// dashboard, which only learns whether a number exists at all.
+// No phone number is in this bundle: they are configured on the server (ADMIN_CALL_NUMBERS) and
+// only sent to a signed-in dashboard, which prefills them into an editable field. A public
+// dashboard never receives one, and a visitor types their own name instead of picking a person.
 
 export type Employee = {
   key: string
   name_ar: string
   name_en: string
   badge: string
-  /** only present for a signed-in dashboard: whether this person can be phoned at all */
-  has_number?: boolean
+  /** only present for a signed-in dashboard: the mobile the dispatch call rings, editable there */
+  phone?: string
 }
 
 export const employeeName = (employee: Employee, lang: "en" | "ar") =>

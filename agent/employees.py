@@ -54,8 +54,11 @@ def call_numbers() -> dict[str, str]:
 
 
 def roster(*, with_numbers: bool = False) -> list[dict[str, object]]:
-    """What the dashboard shows in its employee picker. `with_numbers` only ever says whether a
-    number is configured, never what it is: the dashboard has no use for the digits."""
+    """What the dashboard shows in its employee picker.
+
+    `with_numbers` is for a signed-in dashboard only, which prefills each person's mobile in an
+    editable field. A public dashboard gets names and staff numbers and nothing else, because that
+    reply is readable by anyone who opens the site."""
     configured = call_numbers() if with_numbers else {}
     return [
         {
@@ -63,7 +66,7 @@ def roster(*, with_numbers: bool = False) -> list[dict[str, object]]:
             "name_ar": employee.name_ar,
             "name_en": employee.name_en,
             "badge": employee.badge,
-            **({"has_number": employee.key in configured} if with_numbers else {}),
+            **({"phone": configured.get(employee.key, "")} if with_numbers else {}),
         }
         for employee in EMPLOYEES
     ]

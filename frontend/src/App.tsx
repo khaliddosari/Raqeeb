@@ -53,7 +53,7 @@ import {
 import { adminToken, rememberAdmin } from "@/lib/admin"
 import { isAgency } from "@/lib/agency"
 import { applyDocumentLang, initialLang, rememberLang, STRINGS, type Lang } from "@/lib/i18n"
-import { CHECKPOINT_LOCATIONS, PASS_SLUGS, type CheckpointLocation } from "@/lib/intake"
+import { CHECKPOINT_LOCATIONS, PASS_SLUGS, normalizeSaudiMobile, type CheckpointLocation } from "@/lib/intake"
 import { employeeByKey, employeeName, type Employee } from "@/lib/employees"
 import { readSuspectPass, type SuspectPass } from "@/lib/pass"
 import { toPlainText } from "@/lib/plaintext"
@@ -163,11 +163,13 @@ function RecordItem({
 export default function App() {
   const [lang, setLang] = useState<Lang>(initialLang)
   const t = STRINGS[lang]
-  // The on-duty employee, named by key. No phone number is held here or sent: signed in as the
-  // team the server rings the mobile it has for them, and otherwise the dispatch conversation
-  // happens in this browser (see components/BrowserCallBar.tsx).
+  // Who is on duty, in whichever way this dashboard asks. A visitor types a name and their
+  // dispatch conversation happens in this browser (see components/BrowserCallBar.tsx). Signed in
+  // as the team, an employee is picked and the mobile the call rings is prefilled and editable.
   const [employees, setEmployees] = useState<Employee[]>([])
   const [employeeKey, setEmployeeKey] = useState("")
+  const [visitorName, setVisitorName] = useState("")
+  const [employeePhone, setEmployeePhone] = useState("")
   const [admin, setAdmin] = useState(false)
   const [location, setLocation] = useState<CheckpointLocation>(CHECKPOINT_LOCATIONS[0])
   // Suspect details come from the pass the bag carrier shows, or are typed. A scanned pass also
@@ -279,7 +281,18 @@ export default function App() {
   }, [incident?.id])
 
   const employee = employeeByKey(employees, employeeKey)
-  const detailsReady = employee !== null
+  const phoneE164 = normalizeSaudiMobile(employeePhone)
+  const phoneInvalid = admin && employeePhone.trim() !== "" && phoneE164 === null
+  // signed in, a run needs a number to ring; a visitor needs nothing but the page
+  const detailsReady = admin ? employee !== null && phoneE164 !== null : true
+
+  // the picked employee's own mobile fills the field, and is editable from there
+  useEffect(() => {
+    setEmployeePhone(employee?.phone ?? "")
+  }, [employee?.key, employee?.phone])
+
+  // what the backend is told about who is on duty, in this dashboard's shape
+  const who = () => (admin ? { employeeKey, employeePhone } : { employeeName: visitorName.trim() })
 
   const onFile = (f: File | null) => {
     setFile(f)
@@ -300,7 +313,7 @@ export default function App() {
     setBrowserLines([])
     setDemoPassFailed(false)
     try {
-      const res = await detect(file, employeeKey, location)
+      const res = await detect(file, location, who())
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -327,7 +340,7 @@ export default function App() {
       setFile(testFile)
       setPreviewUrl(TEST_IMAGE_URL)
       setAnnotated(null)
-      const res = await detect(testFile, employeeKey, location)
+      const res = await detect(testFile, location, who())
       if (res.annotated_filename) setAnnotated(uploadsUrl(res.annotated_filename))
       await refresh(res.incident_id)
     } catch (e) {
@@ -564,6 +577,21 @@ export default function App() {
               {/* input */}
               <ScrollArea className="desk:h-full desk:min-h-0">
                 <div className="flex flex-col gap-3 desk:gap-2 desk:p-1 desk:pe-3 desk-short:gap-1.5">
+                  {!admin ? (
+                    <div className="grid gap-1.5 desk:gap-1">
+                      <Label htmlFor="employee-name">{t.inference.employee}</Label>
+                      <Input
+                        id="employee-name"
+                        value={visitorName}
+                        onChange={(e) => setVisitorName(e.target.value)}
+                        placeholder={t.inference.employeeNamePlaceholder}
+                        autoComplete="name"
+                        maxLength={60}
+                        className="h-11 text-center desk:h-8"
+                      />
+                    </div>
+                  ) : (
+                  <>
                   <div className="grid gap-1.5 desk:gap-1">
                     <Label id="employee-label">{t.inference.employee}</Label>
                     <Select value={employeeKey} onValueChange={(v) => v && setEmployeeKey(v)}>
@@ -596,6 +624,31 @@ export default function App() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="grid gap-1.5 desk:gap-1">
+                    <Label htmlFor="employee-phone" className="desk-short:sr-only">
+                      {t.inference.employeeNumber}
+                    </Label>
+                    <Input
+                      id="employee-phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="off"
+                      dir="ltr"
+                      value={employeePhone}
+                      onChange={(e) => setEmployeePhone(e.target.value)}
+                      aria-invalid={phoneInvalid || undefined}
+                      aria-describedby="employee-phone-help"
+                      className="h-11 text-center font-mono tabular-nums desk:h-8"
+                    />
+                    <p
+                      id="employee-phone-help"
+                      className={phoneInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground desk:sr-only"}
+                    >
+                      {phoneInvalid ? t.inference.employeeNumberInvalid : t.inference.employeeNumberHelp}
+                    </p>
+                  </div>
+                  </>
+                  )}
                   <div className="grid gap-1.5 desk:gap-1">
                     <Label id="location-label" className="desk-short:sr-only">{t.inference.location}</Label>
                     <Select value={location} onValueChange={(v) => v && setLocation(v as CheckpointLocation)}>

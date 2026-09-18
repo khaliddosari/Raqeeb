@@ -1,9 +1,9 @@
 // Mirrors agent/intake.py, whose checkpoints and scenarios live in agent/checkpoints.py. The backend
 // is the gate and refuses anything else; these copies only let the form say so before a request is sent.
 //
-// No phone number validation lives here any more: the dashboard never handles one. The mobile a
-// dispatch call rings is configured on the server (see agent/employees.py), and a visitor's
-// dispatch conversation happens in their own browser instead.
+// A visitor never handles a phone number: their dispatch conversation happens in their own
+// browser. A signed-in dashboard does, so the number it prefills can be edited for a run, and
+// this says early what the backend would say anyway.
 
 export const CHECKPOINT_LOCATIONS = [
   "Private Aviation Terminal",
@@ -25,4 +25,12 @@ export const PASS_SLUGS: Record<CheckpointLocation, string> = {
   "Saudi Falcons and Hunting Exhibition": "falcons",
   "Money20/20 Middle East": "money2020",
   "Black Hat MEA": "blackhat",
+}
+
+const SAUDI_MOBILE = /^(?:\+?966|0)?(5\d{8})$/
+
+/** +9665XXXXXXXX for any common way of writing a Saudi mobile, otherwise null. */
+export function normalizeSaudiMobile(raw: string): string | null {
+  const match = SAUDI_MOBILE.exec(raw.replace(/[\s\-()]/g, ""))
+  return match ? `+966${match[1]}` : null
 }

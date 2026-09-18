@@ -313,14 +313,19 @@ only recorded if the authority actually spoke. Both halves check it, because any
 the result endpoint, and because the model does record decisions prematurely. It did exactly that
 on the first live browser test, and was refused.
 
-**Intake: employee and location.** The on-duty employee is picked from a dropdown of the four
-team members and sent as a key (`khalid`, `yazeed`, ...). `agent/employees.py` turns that into the
-name and staff number the report carries, and, for a signed-in dashboard only, into the mobile the
-call rings (`call_phone` in the graph state, applied in `determine_authority_node`). No phone
-number is accepted from the caller any more and none is in the bundle: the dashboard cannot make
-this deployment ring an arbitrary number even if someone forges a request. The checkpoint is still
-validated in `agent/intake.py`, which is the gate; the frontend copy in `lib/intake.ts` only lets
-the form explain itself early.
+**Intake: who is on duty, asked two ways.** A visitor types a name into a box. It goes on the
+report as typed, trimmed to one line of 60 characters, because the voice agent reads it aloud;
+blank becomes "موظف الفحص", and the staff number on such a report is "تجريبي". Signed in, the
+dropdown of the four team members returns, each sent as a key (`khalid`, `yazeed`, ...) that
+`agent/employees.py` turns into a name and staff number, beside an editable number field prefilled
+with that person's mobile from `ADMIN_CALL_NUMBERS`. Editing it changes the number that run rings
+(`call_phone` in the graph state, applied in `determine_authority_node`).
+
+`employee_phone` is only read from a signed-in request: an anonymous one may not choose who gets
+phoned, and its incident places no call at all. The mobiles are sent to a signed-in dashboard so it
+can prefill them, and never to a public one. The checkpoint is still validated in
+`agent/intake.py`, which is the gate; the frontend copy in `lib/intake.ts` only lets the form
+explain itself early.
 
 **Checkpoints and their scenarios.** `agent/checkpoints.py` defines the six locations: the private
 aviation terminal, LEAP 2026, the Future Investment Initiative, the Saudi Falcons and Hunting

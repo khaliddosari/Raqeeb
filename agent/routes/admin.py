@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from agent.auth import admin_configured, admin_required, is_admin, issue_token, password_is_correct
+from agent.auth import admin_configured, is_admin, issue_token, password_is_correct
 from agent.employees import roster
 
 router = APIRouter(prefix="/api", tags=["admin"])
@@ -42,13 +42,7 @@ async def session(authorization: str | None = Header(default=None)):
 
 @router.get("/employees")
 async def employees(authorization: str | None = Header(default=None)):
-    """The on-duty employees the dashboard offers. Signed in, each also says whether a number is
-    configured for it, so the picker can warn before a run that could not place its call. The
-    numbers themselves never leave the server."""
+    """The on-duty employees the dashboard offers. Signed in, each carries the mobile configured
+    for it, which the dashboard prefills into an editable field. Anonymously, names and staff
+    numbers only: this reply is readable by anyone who opens the site."""
     return {"employees": roster(with_numbers=is_admin(authorization))}
-
-
-@router.get("/admin/call-numbers", dependencies=[Depends(admin_required)])
-async def call_numbers_configured():
-    """Which employees the deployment can actually ring. Admin only, and still no digits."""
-    return {"employees": roster(with_numbers=True)}
