@@ -1,13 +1,42 @@
-roboflow
-python-dotenv
-ultralytics
-opencv-python
-numpy
-pandas
-matplotlib
-seaborn
-pyyaml
-Pillow
-modal
-lap
-scipy
+# Python 3.12. Pinned to the versions in uv.lock, so pip installs what `uv sync` does.
+#   pip install -r requirements.txt
+# Keep in step with pyproject.toml when adding a dependency.
+
+# --- Dataset, training and evaluation (notebooks, modal_train.py) ---
+roboflow==1.4.2
+python-dotenv==1.2.3
+ultralytics==8.4.146
+opencv-python==5.0.0.93
+numpy==2.3.5
+pandas==3.0.5
+matplotlib==3.11.1
+seaborn==0.13.2
+pyyaml==6.0.3
+pillow==12.3.0
+modal==1.5.5
+
+# --- Video tracking and MOT benchmark (track_video.py, mot_metrics.py) ---
+lap==0.5.13
+scipy==1.18.1
+# only for track_video.py --fps
+imageio-ffmpeg==0.6.0
+
+# --- Voice agent app (agent/) ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32
+sqlalchemy==2.0.52
+httpx==0.28.1
+pydantic-settings==2.15.0
+langgraph==1.2.11
+langgraph-checkpoint-sqlite==3.1.1
+google-genai==2.22.0
+twilio==9.11.0
+audioop-lts==0.2.2; python_version >= "3.13"
+
+# --- Tests (pytest tests/) ---
+pytest==9.1.1
+pytest-asyncio==1.4.0
+
+# --- Jupyter kernel, so the notebooks run against these packages ---
+ipykernel==7.3.0

@@ -1,7 +1,13 @@
 # Raqeeb
 
 Weapon detection on X-ray baggage scans. Fine-tunes YOLOv8-OBB on the Sixray dataset
-(5 classes: Gun, Knife, Pliers, Scissors, Wrench) using oriented bounding boxes.
+(5 classes: Gun, Knife, Pliers, Scissors, Wrench) using oriented bounding boxes. Once an
+employee confirms a detection, a voice agent writes the incident report in Arabic and calls
+the responsible authority to request a team.
+
+- **Live demo:** https://raqeeb.khalid-ai.dev
+- **Project report:** [`Docs/report/raqeeb_report.pdf`](Docs/report/raqeeb_report.pdf), built
+  from `raqeeb_report.tex` in the same folder
 
 ## Just want to run the trained model?
 
@@ -82,7 +88,7 @@ overlays stay sharp. It needs ffmpeg (`uv sync` installs one) and takes longer t
 tracking pass itself. The dashboard's demo clip is regenerated with:
 
 ```bash
-python track_video.py test_clip.mp4 --fps 60 --output static/test_clip_tracked.mp4
+python track_video.py test_clip.mp4 --fps 60 --output frontend/public/test_clip_tracked.mp4
 ```
 
 `trackers/raqeeb_botsort.yaml` is BoT-SORT retuned for this footage — mainly turning off
@@ -203,6 +209,11 @@ Only needed to re-run the notebooks, re-download the dataset, or retrain.
    ```bash
    uv sync
    ```
+   Or, without uv, on Python 3.12:
+   ```bash
+   pip install -r requirements.txt
+   ```
+   `requirements.txt` pins every direct dependency to the version in `uv.lock`.
 
 ## Notebooks and scripts
 
@@ -211,6 +222,9 @@ Only needed to re-run the notebooks, re-download the dataset, or retrain.
 - **`Model_Training.ipynb`**: zero-shot baseline (why fine-tuning is needed), fine-tuning
   methodology (class-imbalance oversampling), and final results for two model sizes
   (yolov8n-obb, yolov8s-obb).
+- **`Report_generation.ipynb`**: the language-model step. Runs the team's first prompt and the
+  production prompt for the incident report on real detections, and compares them with
+  automatic checks and a written review. Needs `OPENAI_API_KEY` in `.env`.
 - **`track_video.py`**: runs the trained detector over a video with multi-object
   tracking (see above). Inference only -- no dataset or Roboflow key needed.
 - **`make_test_video.py`**: synthesises belt footage from the held-out test split with
@@ -249,12 +263,17 @@ modal volume get sixray-data runs/sixray_yolov8s_obb/weights/best.pt ./best_yolo
 
 ## Results
 
+On the 831-image test split:
+
 | Metric | Zero-shot baseline | yolov8n-obb | yolov8s-obb (best) |
 |---|---|---|---|
-| mAP50 | 0.004 | 0.901 | 0.919 |
-| mAP50-95 | 0.002 | 0.765 | 0.805 |
+| Precision | 0.028 | 0.947 | 0.948 |
+| Recall | 0.030 | 0.856 | 0.891 |
+| mAP50 | 0.004 | 0.900 | 0.919 |
+| mAP50-95 | 0.002 | 0.765 | 0.806 |
 
-See `Model_Training.ipynb` for the full per-class breakdown and methodology.
+See `Model_Training.ipynb` for the full per-class breakdown and methodology, and the project
+report for the confusion matrix and examples of what the model gets wrong.
 
 ## Voice agent app (`agent/`)
 

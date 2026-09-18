@@ -34,7 +34,7 @@ instead. See "Two audiences" below; it is the main thing to understand about the
   `https://khaliddosari2014--raqeeb-fastapi-app.modal.run/api/openai/webhook`. Production was
   checked to reject unsigned and wrongly signed requests, which also proves the secret loaded.
 - **The first live calls failed twice, for two different reasons.** On the evening of
-  2026-09-13 Twilio refused to dial: `Account not authorized to call +966553225155`, most likely
+  2026-09-13 Twilio refused to dial: `Account not authorized to call +9665XXXXXXXX`, most likely
   because the high-risk toll fraud category for Saudi Arabia was off in the geo permissions on
   Yazeed's account. By 2026-09-14 Twilio was dialling: the Modal logs show it fetching the call
   instructions from Modal and OpenAI posting `realtime.call.incoming` to Modal. That call died

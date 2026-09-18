@@ -61,7 +61,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من البوابة الجانبية لساحة الطائرات مباشرة إلى منطقة التفتيش"),
             ("أقرب نقطة أمنية", "مكتب أمن الصالة على بعد نحو 40 مترًا"),
         ),
-        suspect=Suspect(name="فيصل العتيبي", id_number="1093847562", pass_type="بطاقة صعود الطائرة"),
+        suspect=Suspect(name="فيصل فهد", id_number="1093847562", pass_type="بطاقة صعود الطائرة"),
     ),
     Checkpoint(
         code="LEAP 2026 Exhibition",
@@ -79,7 +79,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من مدخل الخدمات الخلفي عبر الممر المخصص للطوارئ"),
             ("أقرب نقطة أمنية", "غرفة العمليات الأمنية للمعرض خلف البوابة رقم 3"),
         ),
-        suspect=Suspect(name="سلطان القحطاني", id_number="1128459307", pass_type="بطاقة دخول عامة"),
+        suspect=Suspect(name="سلطان عبدالعزيز", id_number="1128459307", pass_type="بطاقة دخول عامة"),
     ),
     Checkpoint(
         code="Future Investment Initiative",
@@ -97,7 +97,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من مدخل الخدمة الشرقي تفاديًا لممر الوفود"),
             ("أقرب نقطة أمنية", "مركز القيادة الأمنية في الطابق الأرضي"),
         ),
-        suspect=Suspect(name="ماجد الحربي", id_number="1076238415", pass_type="بطاقة وفد"),
+        suspect=Suspect(name="ماجد سعد", id_number="1076238415", pass_type="بطاقة وفد"),
     ),
     Checkpoint(
         code="Saudi Falcons and Hunting Exhibition",
@@ -115,7 +115,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من بوابة المركبات الخدمية المجاورة لمواقف العارضين"),
             ("أقرب نقطة أمنية", "خيمة الأمن والسلامة بجوار البوابة رقم 1"),
         ),
-        suspect=Suspect(name="تركي الشمري", id_number="1049571836", pass_type="بطاقة زائر عام"),
+        suspect=Suspect(name="تركي محمد", id_number="1049571836", pass_type="بطاقة زائر عام"),
     ),
     Checkpoint(
         code="Money20/20 Middle East",
@@ -133,7 +133,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من رصيف التحميل الخلفي المخصص للعارضين"),
             ("أقرب نقطة أمنية", "نقطة الأمن عند رصيف التحميل"),
         ),
-        suspect=Suspect(name="رامي حداد", id_number="2345718690", pass_type="بطاقة جناح"),
+        suspect=Suspect(name="رامي خالد", id_number="2345718690", pass_type="بطاقة جناح"),
     ),
     Checkpoint(
         code="Black Hat MEA",
@@ -151,7 +151,7 @@ CHECKPOINTS: tuple[Checkpoint, ...] = (
             ("مسار وصول الفريق", "من ممر الطوارئ الغربي المؤدي مباشرة إلى بوابة المشاركين"),
             ("أقرب نقطة أمنية", "مكتب أمن القاعة بجوار منطقة التسجيل"),
         ),
-        suspect=Suspect(name="نايف الغامدي", id_number="1102684759", pass_type="بطاقة ورشة"),
+        suspect=Suspect(name="نايف عبدالله", id_number="1102684759", pass_type="بطاقة ورشة"),
     ),
 )
 

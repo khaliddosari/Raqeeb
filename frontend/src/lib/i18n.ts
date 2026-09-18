@@ -394,7 +394,7 @@ const ar: Dict = {
     suspectDetails: "بيانات المشتبه به",
     suspectHelp: "امسح بطاقة حامل الحقيبة، أو أدخل الاسم ورقم الهوية يدويًا.",
     fullName: "الاسم",
-    fullNamePlaceholder: "مثال: فيصل الحربي",
+    fullNamePlaceholder: "مثال: فيصل فهد",
     idNumber: "رقم الهوية",
     idNumberPlaceholder: "مثال: 1093847562",
     notes: "ملاحظات الفحص (اختياري)",
