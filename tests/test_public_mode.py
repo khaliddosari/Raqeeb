@@ -57,7 +57,7 @@ async def _to_the_dispatch_step(client: httpx.AsyncClient, incident_id: str) -> 
     await client.post(f"/api/incidents/{incident_id}/verify", json={"confirmed": True})
     await client.post(
         f"/api/incidents/{incident_id}/manual-info",
-        json={"suspect_name": "فيصل", "suspect_id_number": "1093847562"},
+        json={"suspect_name": "فيصل", "suspect_id_number": "093847562"},
     )
 
 

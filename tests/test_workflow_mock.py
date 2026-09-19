@@ -118,12 +118,12 @@ async def test_a_scanned_pass_sets_the_event_the_report_and_call_describe():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         refused = await client.post(
             f"/api/incidents/{incident_id}/manual-info",
-            json={"suspect_name": "ماجد سعد", "suspect_id_number": "1076238415", "location": "Nowhere"},
+            json={"suspect_name": "ماجد سعد", "suspect_id_number": "076238415", "location": "Nowhere"},
         )
         assert refused.status_code == 422
         response = await client.post(
             f"/api/incidents/{incident_id}/manual-info",
-            json={"suspect_name": "ماجد سعد", "suspect_id_number": "1076238415", "location": "Future Investment Initiative"},
+            json={"suspect_name": "ماجد سعد", "suspect_id_number": "076238415", "location": "Future Investment Initiative"},
         )
     assert response.status_code == 200, response.text
 

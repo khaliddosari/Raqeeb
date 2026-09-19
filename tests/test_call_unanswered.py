@@ -44,7 +44,7 @@ async def _calling(incident_id: str) -> str:
     await start_incident(incident_id, "x.jpg", employee_name="سارة", employee_id="+966551234567")
     await resume_incident(incident_id, {"confirmed": True, "notes": None})
     paused = await resume_incident(
-        incident_id, {"flagged_false_positive": False, "fields": {"suspect_name": "فيصل", "suspect_id_number": "1093847562"}}
+        incident_id, {"flagged_false_positive": False, "fields": {"suspect_name": "فيصل", "suspect_id_number": "093847562"}}
     )
     assert paused["interrupt"]["stage"] == "authority_conversation"
     return paused["state"]["call_sid"]
@@ -108,7 +108,7 @@ async def test_a_call_the_provider_refuses_to_place_is_held_and_can_be_placed_ag
     await resume_incident(incident_id, {"confirmed": True, "notes": None})
     paused = await resume_incident(
         incident_id,
-        {"flagged_false_positive": False, "fields": {"suspect_name": "فيصل", "suspect_id_number": "1093847562"}},
+        {"flagged_false_positive": False, "fields": {"suspect_name": "فيصل", "suspect_id_number": "093847562"}},
     )
 
     assert paused["interrupt"]["stage"] == "call_unanswered"

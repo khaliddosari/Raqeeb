@@ -2,11 +2,13 @@ export type Lang = "en" | "ar"
 
 const STORAGE_KEY = "raqeeb.lang"
 
+// Arabic is the default for everyone, including a first visit: only a saved English choice
+// overrides it. The static HTML already ships lang="ar", so there is no LTR frame to flash.
 export function initialLang(): Lang {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "ar" ? "ar" : "en"
+    return localStorage.getItem(STORAGE_KEY) === "en" ? "en" : "ar"
   } catch {
-    return "en"
+    return "ar"
   }
 }
 
@@ -121,7 +123,7 @@ const en = {
     fullName: "Full name",
     fullNamePlaceholder: "e.g. Faisal Al-Harbi",
     idNumber: "ID number",
-    idNumberPlaceholder: "e.g. 1093847562",
+    idNumberPlaceholder: "e.g. 093847562",
     notes: "Inspection notes (optional)",
     notesPlaceholder: "e.g. Cooperative, detained at checkpoint",
     submit: "Submit suspect details",
@@ -402,7 +404,7 @@ const ar: Dict = {
     fullName: "الاسم",
     fullNamePlaceholder: "مثال: فيصل فهد",
     idNumber: "رقم الهوية",
-    idNumberPlaceholder: "مثال: 1093847562",
+    idNumberPlaceholder: "مثال: 093847562",
     notes: "ملاحظات الفحص (اختياري)",
     notesPlaceholder: "مثال: متعاون، ومحتجز في نقطة التفتيش",
     submit: "إرسال بيانات المشتبه به",

@@ -24,7 +24,7 @@ _REPORT = {
     "location": "Money20/20 Middle East",
     "detected_item": "Gun",
     "employee": {"name": "خالد آل دوسري", "id": "+966551234567"},
-    "suspect": {"name": "فيصل", "id_number": "1093847562"},
+    "suspect": {"name": "فيصل", "id_number": "093847562"},
     "scenario": scenario_for("Money20/20 Middle East"),
 }
 
@@ -45,6 +45,7 @@ def test_call_instructions_carry_no_english():
 def test_every_checkpoint_speaks_arabic_and_has_a_scenario():
     """The agent says these names and may be asked any of these details, so none may be Latin."""
     assert len({c.pass_slug for c in CHECKPOINTS}) == len(CHECKPOINTS)
+    assert len({c.suspect.id_number for c in CHECKPOINTS}) == len(CHECKPOINTS)
     for checkpoint in CHECKPOINTS:
         assert not _LATIN.search(checkpoint.spoken_ar), checkpoint.code
         assert len(checkpoint.scenario) >= 8, checkpoint.code
@@ -52,7 +53,10 @@ def test_every_checkpoint_speaks_arabic_and_has_a_scenario():
             assert not _LATIN.search(label + detail), (checkpoint.code, label)
         # the scanned pass's name and number reach the call as the suspect's details
         assert not _LATIN.search(checkpoint.suspect.name + checkpoint.suspect.pass_type), checkpoint.code
-        assert checkpoint.suspect.id_number.isdigit() and len(checkpoint.suspect.id_number) == 10, checkpoint.code
+        # nine digits behind a leading zero, which no real Saudi ID can be: those are ten digits
+        # starting with 1 or 2, so a demo number cannot land on a real person's
+        suspect_id = checkpoint.suspect.id_number
+        assert suspect_id.isdigit() and len(suspect_id) == 9 and suspect_id.startswith("0"), checkpoint.code
 
 
 def test_tool_definition_is_arabic_apart_from_identifiers():

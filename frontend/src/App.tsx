@@ -100,7 +100,7 @@ const PassScanner = lazy(() => import("@/components/PassScanner").then((m) => ({
 // Prefilled manual suspect details, Arabic in both interface languages: everything that reaches the call is Arabic.
 const PREFILL = {
   suspectName: "فيصل",
-  suspectId: "1093847562",
+  suspectId: "093847562",
   notes: "المشتبه به متعاون وهادئ",
 }
 
@@ -490,7 +490,7 @@ export default function App() {
                   target="_blank"
                   rel="noreferrer noopener"
                   title={t.onLinkedIn(m.name[lang])}
-                  className="inline-block py-1 text-sm font-bold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                  className="inline-block py-1 text-base font-bold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline sm:text-sm"
                 >
                   <span className="sm:hidden">{m.first[lang]}</span>
                   <span className="hidden sm:inline">{m.name[lang]}</span>
@@ -505,7 +505,7 @@ export default function App() {
                 size="sm"
                 onClick={() => setLang(t.switchToLang)}
                 aria-label={t.switchToLabel}
-                className="h-10 w-10 bg-white/70 px-0 text-sm sm:w-auto sm:px-3 lg:h-8"
+                className="order-last h-10 w-10 bg-white/70 px-0 text-sm sm:order-none sm:w-auto sm:px-3 lg:h-8"
               >
                 <span lang={t.switchToLang} className="sm:hidden">
                   {t.switchToShort}
@@ -526,7 +526,7 @@ export default function App() {
                   setAdmin(false)
                 }}
               />
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="order-first flex items-center gap-1.5 text-xs text-muted-foreground sm:order-none">
                 <span className="font-mono tabular-nums">{RIYADH_TIME.format(clock)}</span>
                 <span className="sm:hidden">{t.timeZoneShort}</span>
                 <span className="hidden sm:inline">{t.timeZone}</span>
