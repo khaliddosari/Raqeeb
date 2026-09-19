@@ -498,22 +498,15 @@ export default function App() {
               ))}
             </nav>
 
+            {/* The language toggle comes last, so it sits at the row's outer edge rather than
+                between the other controls: the right in English, the left once Arabic mirrors
+                the row. The clock leads instead. */}
             <div className="ms-auto flex items-center gap-2 sm:gap-3 lg:ms-0 lg:justify-self-end">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setLang(t.switchToLang)}
-                aria-label={t.switchToLabel}
-                className="order-last h-10 w-10 bg-white/70 px-0 text-sm sm:order-none sm:w-auto sm:px-3 lg:h-8"
-              >
-                <span lang={t.switchToLang} className="sm:hidden">
-                  {t.switchToShort}
-                </span>
-                <span lang={t.switchToLang} className="hidden sm:inline">
-                  {t.switchTo}
-                </span>
-              </Button>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="font-mono tabular-nums">{RIYADH_TIME.format(clock)}</span>
+                <span className="sm:hidden">{t.timeZoneShort}</span>
+                <span className="hidden sm:inline">{t.timeZone}</span>
+              </span>
               <AdminSignIn
                 admin={admin}
                 labels={t.admin}
@@ -526,11 +519,21 @@ export default function App() {
                   setAdmin(false)
                 }}
               />
-              <span className="order-first flex items-center gap-1.5 text-xs text-muted-foreground sm:order-none">
-                <span className="font-mono tabular-nums">{RIYADH_TIME.format(clock)}</span>
-                <span className="sm:hidden">{t.timeZoneShort}</span>
-                <span className="hidden sm:inline">{t.timeZone}</span>
-              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setLang(t.switchToLang)}
+                aria-label={t.switchToLabel}
+                className="h-10 w-10 bg-white/70 px-0 text-sm sm:w-auto sm:px-3 lg:h-8"
+              >
+                <span lang={t.switchToLang} className="sm:hidden">
+                  {t.switchToShort}
+                </span>
+                <span lang={t.switchToLang} className="hidden sm:inline">
+                  {t.switchTo}
+                </span>
+              </Button>
             </div>
           </div>
         </header>
