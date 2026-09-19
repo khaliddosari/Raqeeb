@@ -59,12 +59,29 @@ import { readSuspectPass, type SuspectPass } from "@/lib/pass"
 import { toPlainText } from "@/lib/plaintext"
 import { cn } from "@/lib/utils"
 
-// Each person's own spelling, in both languages.
-const TEAM: { name: Record<Lang, string>; url: string }[] = [
-  { name: { en: "Khalid Al Dosari", ar: "خالد آل دوسري" }, url: "https://www.linkedin.com/in/khalid-al-dosari/" },
-  { name: { en: "Nawaf Alsharani", ar: "نواف الشهراني" }, url: "https://www.linkedin.com/in/nawaf-alsharani-a431b731a/" },
-  { name: { en: "Yazeed Bin Shihah", ar: "يزيد بن شيحة" }, url: "https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/" },
-  { name: { en: "Omar Al-Dhawyan", ar: "عمر الضويان" }, url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/" },
+// Each person's own spelling, in both languages. `first` is what a phone header shows: four full
+// names crowd a phone's row, and the link still carries the full name in its title.
+const TEAM: { name: Record<Lang, string>; first: Record<Lang, string>; url: string }[] = [
+  {
+    name: { en: "Khalid Al Dosari", ar: "خالد آل دوسري" },
+    first: { en: "Khalid", ar: "خالد" },
+    url: "https://www.linkedin.com/in/khalid-al-dosari/",
+  },
+  {
+    name: { en: "Nawaf Alsharani", ar: "نواف الشهراني" },
+    first: { en: "Nawaf", ar: "نواف" },
+    url: "https://www.linkedin.com/in/nawaf-alsharani-a431b731a/",
+  },
+  {
+    name: { en: "Yazeed Bin Shihah", ar: "يزيد بن شيحة" },
+    first: { en: "Yazeed", ar: "يزيد" },
+    url: "https://www.linkedin.com/in/yazeed-bin-shihah-57aa1b309/",
+  },
+  {
+    name: { en: "Omar Al-Dhawyan", ar: "عمر الضويان" },
+    first: { en: "Omar", ar: "عمر" },
+    url: "https://www.linkedin.com/in/omar-al-dhawyan-789336269/",
+  },
 ]
 
 const RIYADH_TIME = new Intl.DateTimeFormat("en-GB", {
@@ -475,21 +492,27 @@ export default function App() {
                   title={t.onLinkedIn(m.name[lang])}
                   className="inline-block py-1 text-sm font-bold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                 >
-                  {m.name[lang]}
+                  <span className="sm:hidden">{m.first[lang]}</span>
+                  <span className="hidden sm:inline">{m.name[lang]}</span>
                 </a>
               ))}
             </nav>
 
-            <div className="ms-auto flex items-center gap-3 lg:ms-0 lg:justify-self-end">
+            <div className="ms-auto flex items-center gap-2 sm:gap-3 lg:ms-0 lg:justify-self-end">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={() => setLang(t.switchToLang)}
                 aria-label={t.switchToLabel}
-                className="h-10 bg-white/70 px-3 text-sm lg:h-8"
+                className="h-10 w-10 bg-white/70 px-0 text-sm sm:w-auto sm:px-3 lg:h-8"
               >
-                <span lang={t.switchToLang}>{t.switchTo}</span>
+                <span lang={t.switchToLang} className="sm:hidden">
+                  {t.switchToShort}
+                </span>
+                <span lang={t.switchToLang} className="hidden sm:inline">
+                  {t.switchTo}
+                </span>
               </Button>
               <AdminSignIn
                 admin={admin}
@@ -505,7 +528,8 @@ export default function App() {
               />
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="font-mono tabular-nums">{RIYADH_TIME.format(clock)}</span>
-                <span>{t.timeZone}</span>
+                <span className="sm:hidden">{t.timeZoneShort}</span>
+                <span className="hidden sm:inline">{t.timeZone}</span>
               </span>
             </div>
           </div>
