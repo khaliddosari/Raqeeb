@@ -307,6 +307,10 @@ a, button, input, label, select, [role="tab"], [role="combobox"], [role="option"
    behind them worth blurring, hence the ambient wash on body::before.
 --------------------------------------------------------------------------- */
 :root {
+  /* A light design: native controls, scrollbars and autofill stay light even
+     on a machine set to dark mode. */
+  color-scheme: light;
+
   --background: oklch(0.975 0.01 250);
   --foreground: oklch(0.16 0.045 258);
 
@@ -338,6 +342,31 @@ a, button, input, label, select, [role="tab"], [role="combobox"], [role="option"
   /* glass recipe, reused by the Card and the header */
   --glass-edge: oklch(1 0 0 / 0.7);
   --glass-shadow: 0 1px 2px oklch(0.28 0.09 262 / 0.06), 0 12px 36px -14px oklch(0.28 0.09 262 / 0.3);
+
+  /* Popups float higher than panels, so their shadow is deeper, and they sit
+     over content rather than the wash, so their edge is a navy hairline
+     rather than the white glass edge, which would vanish against a card. */
+  --popup-shadow: 0 0 0 1px oklch(0.5 0.06 258 / 0.18), 0 2px 6px oklch(0.28 0.09 262 / 0.08), 0 20px 48px -12px oklch(0.28 0.09 262 / 0.34);
+  --scrim: oklch(0.2 0.06 262 / 0.3);
+
+  /* Charts: the wash's own hues (234-276), stepped in lightness so
+     neighbouring series separate even in greyscale. */
+  --chart-1: oklch(0.42 0.14 262);
+  --chart-2: oklch(0.7 0.12 234);
+  --chart-3: oklch(0.55 0.15 276);
+  --chart-4: oklch(0.8 0.07 250);
+  --chart-5: oklch(0.3 0.08 258);
+
+  /* The sidebar is a container of other surfaces, so it is weaker glass than
+     a card. Everything else follows the main tokens. */
+  --sidebar: oklch(1 0 0 / 0.5);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 body::before {
@@ -353,12 +382,78 @@ body::before {
     radial-gradient(38rem 34rem at 22% 88%, oklch(0.66 0.12 272 / 0.26), transparent 64%);
 }
 
+/* Popups and overlays: a navy scrim instead of black, and every popup surface
+   blurred (the popover token is translucent, so without a blur the text behind
+   shows through sharp) with the deeper navy popup shadow. Unlayered on purpose,
+   like the tracking rule at the end: a layered rule loses to the utilities. To
+   change one instance anyway, use the important modifier (shadow-none!). */
+:is(
+  [data-slot="dialog-overlay"],
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="sheet-overlay"],
+  [data-slot="drawer-overlay"]
+) {
+  background-color: var(--scrim);
+}
+
+:is(
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="drawer-content"],
+  [data-slot="popover-content"],
+  [data-slot="hover-card-content"],
+  [data-slot="navigation-menu-content"],
+  [data-slot="navigation-menu-viewport"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="context-menu-content"],
+  [data-slot="context-menu-sub-content"],
+  [data-slot="menubar-content"],
+  [data-slot="menubar-sub-content"],
+  [data-slot="select-content"],
+  [data-slot="combobox-content"],
+  [data-slot="toast"]
+) {
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+}
+
+:is(
+  [data-slot="dialog-content"],
+  [data-slot="alert-dialog-content"],
+  [data-slot="sheet-content"],
+  [data-slot="drawer-content"],
+  [data-slot="popover-content"],
+  [data-slot="hover-card-content"],
+  [data-slot="navigation-menu-content"],
+  [data-slot="navigation-menu-viewport"],
+  [data-slot="dropdown-menu-content"],
+  [data-slot="dropdown-menu-sub-content"],
+  [data-slot="context-menu-content"],
+  [data-slot="context-menu-sub-content"],
+  [data-slot="menubar-content"],
+  [data-slot="menubar-sub-content"],
+  [data-slot="select-content"],
+  [data-slot="combobox-content"]
+) {
+  box-shadow: var(--popup-shadow);
+}
+
+/* The sidebar rail, if one is added, is glass over the wash like a panel. */
+[data-slot="sidebar-inner"] {
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+}
+
 /* Glass depends on translucency. Where the viewer has asked for less of it, or
    the browser cannot blur, fall back to an opaque surface rather than an
    unreadable one. */
 @supports not (backdrop-filter: blur(1px)) {
   :root {
     --card: oklch(1 0 0 / 0.95);
+    --popover: oklch(0.99 0.005 250 / 0.98);
+    --sidebar: oklch(0.99 0.005 250 / 0.95);
   }
 }
 
@@ -366,6 +461,7 @@ body::before {
   :root {
     --card: oklch(1 0 0 / 0.97);
     --popover: oklch(0.99 0.005 250 / 0.99);
+    --sidebar: oklch(0.99 0.005 250 / 0.97);
   }
   body::before {
     opacity: 0.35;
