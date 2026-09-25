@@ -88,7 +88,7 @@ export function AdminSignIn({
         ref={dialogRef}
         onClose={() => setOpen(false)}
         aria-label={labels.title}
-        className="m-auto w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-background p-0 text-foreground shadow-2xl backdrop:bg-slate-950/40 backdrop:backdrop-blur-sm"
+        className="m-auto w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-popover p-0 text-popover-foreground shadow-(--popup-shadow) backdrop-blur-xl backdrop-saturate-150 backdrop:bg-(--scrim) backdrop:backdrop-blur-sm"
       >
         <form onSubmit={submit} className="flex flex-col gap-3 p-5">
           <div>
